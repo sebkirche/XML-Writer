@@ -5,7 +5,7 @@
 # Copyright (c) 2004 by Joseph Walton <joe@kafsemo.org>.
 # No warranty.  Commercial and non-commercial use freely permitted.
 #
-# $Id: 01_main.t,v 1.3 2004/05/25 17:59:37 josephw Exp $
+# $Id: 01_main.t,v 1.5 2004/09/01 15:05:06 josephw Exp $
 ########################################################################
 
 # Before 'make install' is performed this script should be runnable with
@@ -13,8 +13,7 @@
 
 use strict;
 
-use Test::More(tests => 145);
-# use Test::More(tests => 137);
+use Test::More(tests => 154);
 
 
 # Catch warnings
@@ -1253,6 +1252,61 @@ TEST: {
 </doc>
 EOS
 };
+
+# Verify that PREFIX_MAP's default prefix is not ignored when
+#  a document element is from a different namespace
+TEST: {
+	initEnv(PREFIX_MAP => {'uri:test', ''},
+		FORCED_NS_DECLS => ['uri:test']
+	);
+
+	$w->emptyTag(['uri:test2', 'document']);
+
+	$w->end();
+
+	checkResult(<<"EOS", 'The default namespace declaration should be present and correct when the document element belongs to a different namespace');
+<__NS1:document xmlns:__NS1="uri:test2" xmlns="uri:test" />
+EOS
+};
+
+# Without namespaces, addPrefix and removePrefix should be safe NOPs
+TEST: {
+	initEnv(NAMESPACES => 0);
+
+	$w->addPrefix('these', 'arguments', 'are', 'ignored');
+	$w->removePrefix('as', 'are', 'these');
+
+	wasNoWarning('Prefix manipulation on a namespace-unaware instance should not warn');
+};
+
+# Make sure that getting and setting the output stream behaves as expected
+TEST: {
+	initEnv();
+
+	my $out = $w->getOutput();
+
+	isnt($out, undef, 'Output for this fixture must be defined');
+
+	$w->setOutput(\*STDERR);
+	is($w->getOutput(), \*STDERR, 'Changing output should be reflected in a subsequent get');
+
+	$w->setOutput($out);
+	is ($w->getOutput(), $out, 'Changing output back should succeed');
+
+	$w->emptyTag('x');
+	$w->end();
+	checkResult("<x />\n", 'After changing the output a document should still be generated');
+};
+
+# Make sure that undef implies STDOUT for setOutput
+TEST: {
+	initEnv();
+
+	$w->setOutput();
+
+	is($w->getOutput(), \*STDOUT, 'If no output is given, STDOUT should be used');
+};
+
 
 # Free test resources
 $outputFile->close() or die "Unable to close temporary file: $!";

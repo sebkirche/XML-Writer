@@ -4,7 +4,7 @@
 # Copyright (c) 2004 by Joseph Walton <joe@kafsemo.org>.
 # No warranty.  Commercial and non-commercial use freely permitted.
 #
-# $Id: Writer.pm,v 1.27 2004/05/25 19:05:38 josephw Exp $
+# $Id: Writer.pm,v 1.29 2004/09/01 15:16:08 josephw Exp $
 ########################################################################
 
 package XML::Writer;
@@ -15,7 +15,7 @@ use strict;
 use vars qw($VERSION);
 use Carp;
 use IO::Handle;
-$VERSION = "0.510";
+$VERSION = "0.520";
 
 
 
@@ -835,20 +835,7 @@ sub new {
       
                                 # Is there a straight-forward prefix?
     } elsif ($prefix) {
-      unless ($nsDecls->{$uri}) {
-                                # Copy on write (FIXME: duplicated)
-        unless ($nsCopyFlag) {
-          $uriMap = {%{$uriMap}};
-          $nsDecls = {%{$nsDecls}};
-          $nsCopyFlag = 1;
-        }
-        $nsDecls->{$uri} = $prefix;
-        $uriMap->{$prefix} = $uri;
-        push @{$atts}, "xmlns:$prefix";
-        push @{$atts}, $uri;
-      }
       $$nameref = "$prefix:$local";
-
     } else {
       $prefix = &{$genPrefix}($uri);
       unless ($nsCopyFlag) {
@@ -880,12 +867,17 @@ sub new {
       $i += 2;
     }
 
-    # We only do this for the outermost element
+    # We do this if any declarations are forced, due either to
+    #  constructor arguments or to a call during processing.
     if (@forcedNSDecls) {
       foreach (@forcedNSDecls) {
         my @dummy = ($_, 'dummy');
         my $d2 = \@dummy;
-        &{$processName}(\$d2, $_[0], 1);
+        if ($defaultPrefix && ($_ eq $defaultPrefix)) {
+          &{$processName}(\$d2, $_[0], 0);
+        } else {
+          &{$processName}(\$d2, $_[0], 1);
+        }
       }
       @forcedNSDecls = ();
     }
@@ -1520,7 +1512,15 @@ providing an UNSAFE parameter:
 
 =head1 AUTHOR
 
-David Megginson, david@megginson.com
+David Megginson E<lt>david@megginson.comE<gt>
+
+
+=head1 COPYRIGHT
+
+Copyright 1999, 2000 David Megginson E<lt>david@megginson.comE<gt>
+
+Copyright 2004 Joseph Walton E<lt>joe@kafsemo.orgE<gt>
+
 
 =head1 SEE ALSO
 
