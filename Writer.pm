@@ -3,7 +3,7 @@
 # Copyright (c) 1999 by Megginson Technologies.
 # No warranty.  Commercial and non-commercial use freely permitted.
 #
-# $Id: Writer.pm,v 0.4 2000/04/05 02:23:34 david Exp $
+# $Id: Writer.pm,v 1.2 2003/10/18 20:18:58 ed Exp $
 ########################################################################
 
 package XML::Writer;
@@ -13,9 +13,8 @@ require 5.004;
 use strict;
 use vars qw($VERSION);
 use Carp;
-use IO;
-
-$VERSION = "0.4";
+use IO::Handle;
+$VERSION = "0.4.1";
 
 
 
