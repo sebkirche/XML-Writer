@@ -4,7 +4,7 @@
 # Copyright (c) 2004, 2005 by Joseph Walton <joe@kafsemo.org>.
 # No warranty.  Commercial and non-commercial use freely permitted.
 #
-# $Id: Writer.pm,v 1.34 2005/02/01 13:11:41 josephw Exp $
+# $Id: Writer.pm,v 1.36 2005/03/14 22:15:14 josephw Exp $
 ########################################################################
 
 package XML::Writer;
@@ -15,7 +15,7 @@ use strict;
 use vars qw($VERSION);
 use Carp;
 use IO::Handle;
-$VERSION = "0.530";
+$VERSION = "0.531";
 
 
 
@@ -430,7 +430,7 @@ sub new {
     my $newOutput = $_[0];
 
     if (ref($newOutput) eq 'SCALAR') {
-      $newOutput = new XML::Writer::String($newOutput);
+      $newOutput = new XML::Writer::_String($newOutput);
     }
                                 # If there is no OUTPUT parameter,
                                 # use standard output
@@ -1064,7 +1064,7 @@ sub forceNSDecl
 }
 
 
-package XML::Writer::String;
+package XML::Writer::_String;
 
 # Internal class, behaving sufficiently like an IO::Handle,
 #  that stores written output in a string

@@ -5,7 +5,7 @@
 # Copyright (c) 2004, 2005 by Joseph Walton <joe@kafsemo.org>.
 # No warranty.  Commercial and non-commercial use freely permitted.
 #
-# $Id: 01_main.t,v 1.8 2005/02/01 00:47:45 josephw Exp $
+# $Id: 01_main.t,v 1.10 2005/02/18 07:50:27 josephw Exp $
 ########################################################################
 
 # Before 'make install' is performed this script should be runnable with
@@ -13,7 +13,7 @@
 
 use strict;
 
-use Test::More(tests => 162);
+use Test::More(tests => 164);
 
 
 # Catch warnings
@@ -47,7 +47,7 @@ my $outputFile = IO::File->new_tmpfile or die "Unable to create temporary file: 
 sub getBufStr()
 {
 	local($/);
-	binmode($outputFile, ':bytes');
+	binmode($outputFile, ':bytes') if $] >= 5.008;
 	$outputFile->seek(0, 0);
 	return <$outputFile>;
 }
@@ -1341,7 +1341,7 @@ TEST: {
 };
 
 # Make sure UTF-8 is written properly
-TEST: {
+SKIP: {
 	skip 'Unicode only supported with Perl >= 5.8', 2 unless $] >= 5.008;
 
 	initEnv(ENCODING => 'utf-8', DATA_MODE => 1);
@@ -1377,6 +1377,21 @@ TEST: {
 	is($s, "<x />\n", "Output should be stored in a scalar, if one is passed");
 };
 
+# Modify the scalar during capture
+TEST: {
+	my $s;
+
+	$w = new XML::Writer(OUTPUT => \$s);
+	$w->startTag('foo', bar => 'baz');
+	is($s, "<foo bar=\"baz\">", 'Scalars should be up-to-date during writing');
+
+	$s = '';
+	$w->dataElement('txt', 'blah');
+	$w->endTag('foo');
+	$w->end();
+
+	is($s, "<txt>blah</txt></foo>\n", 'Resetting the scalar should work properly');
+};
 
 # Free test resources
 $outputFile->close() or die "Unable to close temporary file: $!";
