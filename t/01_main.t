@@ -5,15 +5,16 @@
 # Copyright (c) 2004 by Joseph Walton <joe@kafsemo.org>.
 # No warranty.  Commercial and non-commercial use freely permitted.
 #
-# $Id: test.pl,v 1.7 2004/03/06 21:53:25 josephw Exp $
+# $Id: 01_main.t,v 1.3 2004/05/25 17:59:37 josephw Exp $
 ########################################################################
 
-# Before `make install' is performed this script should be runnable with
-# `make test'. After `make install' it should work as `perl test.pl'
+# Before 'make install' is performed this script should be runnable with
+# 'make test'. After 'make install' it should work as 'perl 01_main.t'
 
 use strict;
 
-use Test::More(tests => 137);
+use Test::More(tests => 145);
+# use Test::More(tests => 137);
 
 
 # Catch warnings
@@ -79,7 +80,32 @@ sub checkResult($$)
 {
 	my ($expected, $explanation) = (@_);
 
-	is(getBufStr(), $expected, $explanation);
+	my $actual = getBufStr();
+
+	if ($expected eq $actual) {
+		ok(1, $explanation);
+	} else {
+		my @e = split(/\n/, $expected);
+		my @a = split(/\n/, $actual);
+
+		if (@e + @a == 2) {
+			is(getBufStr(), $expected, $explanation);
+		} else {
+			if (eval {require Algorithm::Diff;}) {
+				fail($explanation);
+
+				Algorithm::Diff::traverse_sequences( \@e, \@a, {
+					MATCH => sub { diag(" $e[$_[0]]\n"); },
+					DISCARD_A => sub { diag("-$e[$_[0]]\n"); },
+					DISCARD_B => sub { diag("+$a[$_[1]]\n"); }
+				});
+			} else {
+				diag("         got: '$actual'\n");
+				diag("    expected: '$expected'\n");
+			}
+		}
+	}
+
 	wasNoWarning('Expected result tests should not cause warnings');
 }
 
@@ -996,7 +1022,7 @@ TEST: {
 
 # Exercise nesting and namespaces
 TEST: {
-	initEnv();
+	initEnv(DATA_MODE => 1, DATA_INDENT => 1);
 	$w->startTag(['a', 'element']);
 	$w->startTag(['a', 'element']);
 	$w->startTag(['b', 'element']);
@@ -1014,7 +1040,18 @@ TEST: {
 	$w->end();
 
 	checkResult(<<"EOS", "Deep-nesting, to exercise prefix management");
-<__NS1:element xmlns:__NS1="a"><__NS1:element><__NS2:element xmlns:__NS2="b"><__NS2:element><__NS3:element xmlns:__NS3="c"><__NS4:element xmlns:__NS4="d"></__NS4:element><__NS4:element xmlns:__NS4="d"></__NS4:element></__NS3:element></__NS2:element></__NS2:element></__NS1:element></__NS1:element>
+<__NS1:element xmlns:__NS1="a">
+ <__NS1:element>
+  <__NS2:element xmlns:__NS2="b">
+   <__NS2:element>
+    <__NS3:element xmlns:__NS3="c">
+     <__NS4:element xmlns:__NS4="d"></__NS4:element>
+     <__NS4:element xmlns:__NS4="d"></__NS4:element>
+    </__NS3:element>
+   </__NS2:element>
+  </__NS2:element>
+ </__NS1:element>
+</__NS1:element>
 EOS
 };
 
@@ -1096,6 +1133,125 @@ TEST: {
 	expectError("Mixed content not allowed in data mode: characters", eval {
 		$w->cdata('Text');
 	});
+};
+
+# Make sure addPrefix-caused clashes are resolved
+TEST: {
+	initEnv();
+
+	$w->addPrefix('a', '');
+	$w->addPrefix('b', '');
+
+	$w->startTag(['a', 'doc']);
+	$w->emptyTag(['b', 'elem']);
+	$w->endTag(['a', 'doc']);
+	$w->end();
+
+	checkResult(<<"EOS", 'Later addPrefix()s should override earlier ones');
+<__NS1:doc xmlns:__NS1="a"><elem xmlns="b" /></__NS1:doc>
+EOS
+};
+
+# addPrefix should work in the middle of a document
+TEST: {
+	initEnv();
+
+	$w->addPrefix('a', '');
+	$w->startTag(['a', 'doc']);
+
+	$w->addPrefix('b', '');
+	$w->emptyTag(['b', 'elem']);
+	$w->endTag(['a', 'doc']);
+	$w->end();
+
+	checkResult(<<"EOS", 'addPrefix should work in the middle of a document');
+<doc xmlns="a"><elem xmlns="b" /></doc>
+EOS
+};
+
+# Verify changing the default namespace
+TEST: {
+	initEnv(
+		DATA_MODE => 1,
+		DATA_INDENT => 1
+	);
+
+	$w->addPrefix('a', '');
+
+	$w->startTag(['a', 'doc']);
+
+	$w->startTag(['b', 'elem1']);
+	$w->emptyTag(['b', 'elem1']);
+	$w->emptyTag(['a', 'elem2']);
+	$w->endTag(['b', 'elem1']);
+	
+	$w->addPrefix('b', '');
+
+	$w->startTag(['b', 'elem1']);
+	$w->emptyTag(['b', 'elem1']);
+	$w->emptyTag(['a', 'elem2']);
+	$w->endTag(['b', 'elem1']);
+	
+	$w->addPrefix('a', '');
+
+	$w->startTag(['b', 'elem1']);
+	$w->emptyTag(['b', 'elem1']);
+	$w->emptyTag(['a', 'elem2']);
+	$w->endTag(['b', 'elem1']);
+
+	$w->endTag(['a', 'doc']);
+	$w->end();
+	
+	checkResult(<<"EOS", 'The default namespace should be modifiable during a document');
+<doc xmlns="a">
+ <__NS1:elem1 xmlns:__NS1="b">
+  <__NS1:elem1 />
+  <elem2 />
+ </__NS1:elem1>
+ <elem1 xmlns="b">
+  <elem1 />
+  <__NS1:elem2 xmlns:__NS1="a" />
+ </elem1>
+ <__NS1:elem1 xmlns:__NS1="b">
+  <__NS1:elem1 />
+  <elem2 />
+ </__NS1:elem1>
+</doc>
+EOS
+};
+
+# Verify forcing namespace declarations mid-document
+TEST: {
+	initEnv(
+		DATA_MODE => 1,
+		DATA_INDENT => 1
+	);
+
+	$w->addPrefix('a', '');
+
+	$w->startTag(['a', 'doc']);
+
+	$w->forceNSDecl('c');
+	$w->startTag(['b', 'elem1']);
+
+	$w->emptyTag(['c', 'elem3']);
+	$w->emptyTag(['c', 'elem3']);
+	$w->emptyTag(['c', 'elem3']);
+
+	$w->endTag(['b', 'elem1']);
+
+	$w->endTag(['a', 'doc']);
+	$w->end();
+	
+	checkResult(<<"EOS", 'Namespace declarations should be forceable mid-document');
+<doc xmlns="a">
+ <__NS1:elem1 xmlns:__NS1="b" xmlns:__NS2="c">
+  <__NS2:elem3 />
+  <__NS2:elem3 />
+  <__NS2:elem3 />
+ </__NS1:elem1>
+</doc>
+EOS
 };
 
 # Free test resources

@@ -1,9 +1,10 @@
 ########################################################################
 # Writer.pm - write an XML document.
 # Copyright (c) 1999 by Megginson Technologies.
+# Copyright (c) 2004 by Joseph Walton <joe@kafsemo.org>.
 # No warranty.  Commercial and non-commercial use freely permitted.
 #
-# $Id: Writer.pm,v 1.23 2004/03/06 22:41:03 josephw Exp $
+# $Id: Writer.pm,v 1.27 2004/05/25 19:05:38 josephw Exp $
 ########################################################################
 
 package XML::Writer;
@@ -14,7 +15,7 @@ use strict;
 use vars qw($VERSION);
 use Carp;
 use IO::Handle;
-$VERSION = "0.500";
+$VERSION = "0.510";
 
 
 
@@ -344,7 +345,7 @@ sub new {
   };
 
   my $SAFE_raw = sub {
-  	croak('raw() is only available when UNSAFE is set');
+    croak('raw() is only available when UNSAFE is set');
   };
 
   my $cdata = sub {
@@ -427,12 +428,7 @@ sub new {
     my $newOutput = $_[0];
                                 # If there is no OUTPUT parameter,
                                 # use standard output
-    unless ($newOutput) {
-      $newOutput = new IO::Handle();
-      $newOutput->fdopen(fileno(STDOUT), "w") ||
-        croak("Cannot write to standard output: $!");
-    }
-    $output = $newOutput;
+    $output = $newOutput || \*STDOUT;
   };
 
   $self->{'SETDATAMODE'} = sub {
@@ -740,13 +736,13 @@ sub new {
   $prefixMap{'http://www.w3.org/XML/1998/namespace'} = 'xml';
 
                                 # Generate the reverse map for URIs
-  my %uriMap = ();
+  my $uriMap = {};
   my $key;
   foreach $key (keys(%prefixMap)) {
-    $uriMap{$prefixMap{$key}} = $key;
+    $uriMap->{$prefixMap{$key}} = $key;
   }
 
-  my $defaultPrefix = $uriMap{''};
+  my $defaultPrefix = $uriMap->{''};
   delete $prefixMap{$defaultPrefix} if ($defaultPrefix);
 
                                 # Create an instance of the parent.
@@ -759,12 +755,10 @@ sub new {
   my $OLD_endTag = $self->{ENDTAG};
 
                                 # State variables
+  my @stack;
   my $prefixCounter = 1;
-  my @nsDecls = ();
   my $nsDecls = {'http://www.w3.org/XML/1998/namespace' => 'xml'};
-  my @nsDefaultDecl = ();
   my $nsDefaultDecl = undef;
-  my @nsCopyFlag = ();
   my $nsCopyFlag = 0;
   my @forcedNSDecls = ();
 
@@ -777,9 +771,7 @@ sub new {
   # Push the current declaration state.
   #
   my $pushState = sub {
-    push @nsDecls, $nsDecls;
-    push @nsDefaultDecl, $nsDefaultDecl;
-    push @nsCopyFlag, $nsCopyFlag;
+    push @stack, [$nsDecls, $nsDefaultDecl, $nsCopyFlag, $uriMap];
     $nsCopyFlag = 0;
   };
 
@@ -788,20 +780,26 @@ sub new {
   # Pop the current declaration state.
   #
   my $popState = sub {
-    $nsDecls = pop @nsDecls;
-    $nsDefaultDecl = pop @nsDefaultDecl;
-    $nsCopyFlag = pop @nsCopyFlag;
+    ($nsDecls, $nsDefaultDecl, $nsCopyFlag, $uriMap) = @{pop @stack};
   };
 
   #
   # Generate a new prefix.
   #
   my $genPrefix = sub {
-    my $prefix;
-    do {
+    my $uri = $_[0];
+    my $prefixCounter = 1;
+    my $prefix = $prefixMap{$uri};
+    my %clashMap = %{$uriMap};
+    while( my ($u, $p) = each(%prefixMap)) {
+      $clashMap{$p} = $u;
+    }
+
+    while (!defined($prefix) || ($clashMap{$prefix} && $clashMap{$prefix} ne $uri)) {
       $prefix = "__NS$prefixCounter";
       $prefixCounter++;
-    } while ($uriMap{$prefix});
+    }
+
     return $prefix;
   };
 
@@ -811,42 +809,54 @@ sub new {
   my $processName = sub {
     my ($nameref, $atts, $attFlag) = (@_);
     my ($uri, $local) = @{$$nameref};
-    my $prefix = $prefixMap{$uri};
+    my $prefix = $nsDecls->{$uri};
 
                                 # Is this an element name that matches
                                 # the default NS?
     if (!$attFlag && $defaultPrefix && ($uri eq $defaultPrefix)) {
-      unless ($nsDefaultDecl) {
+      unless ($nsDefaultDecl && ($nsDefaultDecl eq $uri)) {
         push @{$atts}, 'xmlns';
         push @{$atts}, $uri;
-        $nsDefaultDecl = 1;
+        $nsDefaultDecl = $uri;
       }
       $$nameref = $local;
+
+      if (defined($uriMap->{''})) {
+        delete ($nsDecls->{$uriMap->{''}});
+      }
+
+      $nsDecls->{$uri} = '';
+      unless ($nsCopyFlag) {
+        $uriMap = {%{$uriMap}};
+        $nsDecls = {%{$nsDecls}};
+        $nsCopyFlag = 1;
+      }
+      $uriMap->{''} = $uri;
       
                                 # Is there a straight-forward prefix?
     } elsif ($prefix) {
       unless ($nsDecls->{$uri}) {
                                 # Copy on write (FIXME: duplicated)
         unless ($nsCopyFlag) {
+          $uriMap = {%{$uriMap}};
+          $nsDecls = {%{$nsDecls}};
           $nsCopyFlag = 1;
-          my %decls = (%{$nsDecls});
-          $nsDecls = \%decls;
         }
         $nsDecls->{$uri} = $prefix;
+        $uriMap->{$prefix} = $uri;
         push @{$atts}, "xmlns:$prefix";
         push @{$atts}, $uri;
       }
       $$nameref = "$prefix:$local";
 
     } else {
-      $prefix = &{$genPrefix}();
-      $prefixMap{$uri} = $prefix;
-      $uriMap{$prefix} = $uri;
+      $prefix = &{$genPrefix}($uri);
       unless ($nsCopyFlag) {
+        $uriMap = {%{$uriMap}};
+        $nsDecls = {%{$nsDecls}};
         $nsCopyFlag = 1;
-        my %decls = (%{$nsDecls});
-        $nsDecls = \%decls;
       }
+      $uriMap->{$prefix} = $uri;
       $nsDecls->{$uri} = $prefix;
       push @{$atts}, "xmlns:$prefix";
       push @{$atts}, $uri;
@@ -881,6 +891,13 @@ sub new {
     }
   };
 
+
+  # Indicate that a namespace should be declared by the next open element
+  $self->{FORCENSDECL} = sub {
+    push @forcedNSDecls, $_[0];
+  };
+
+
   #
   # Start tag, with NS processing
   #
@@ -914,7 +931,17 @@ sub new {
   #
   $self->{ENDTAG} = sub {
     my $name = $_[0];
-    &{$nsProcess}(\@_);
+    if (ref($_[0]) eq 'ARRAY') {
+      my $pfx = $nsDecls->{$_[0]->[0]};
+      if ($pfx) {
+        $_[0] = $pfx . ':' . $_[0]->[1];
+      } else {
+        $_[0] = $_[0]->[1];
+      }
+    } else {
+      $_[0] = $_[0];
+    }
+#    &{$nsProcess}(\@_);
     &{$OLD_endTag};
     &{$popState}();
   };
@@ -942,8 +969,10 @@ sub new {
     my ($uri, $prefix) = (@_);
     if ($prefix) {
       $prefixMap{$uri} = $prefix;
-      $uriMap{$prefix} = $uri;
     } else {
+      if (defined($defaultPrefix)) {
+        delete($prefixMap{$defaultPrefix});
+      }
       $defaultPrefix = $uri;
     }
   };
@@ -1022,6 +1051,12 @@ sub _checkNSNames {
     }
     $i += 2;
   }
+}
+
+sub forceNSDecl
+{
+  my $self = shift;
+  return &{$self->{FORCENSDECL}};
 }
 
 
@@ -1353,7 +1388,7 @@ Return a true value if the most recent open element matches $name:
 
 =item within_element($name)
 
-Return a true value if any open elemnet matches $name:
+Return a true value if any open element matches $name:
 
   if ($writer->within_element('body')) {
     $writer->startTag('h1');
@@ -1381,8 +1416,7 @@ element.
 
 =head2 Additional Namespace Support
 
-WARNING: you must not use these methods while you are writing a
-document, or the results will be unpredictable.
+As of 0.510, these methods may be used while writing a document.
 
 =over 4
 
@@ -1398,8 +1432,10 @@ To set the default namespace, omit the $prefix parameter or set it to
 
 Remove a preferred mapping between a Namespace URI and a prefix.
 
-To set the default namespace, omit the $prefix parameter or set it to
-''.
+=item forceNSDecl($uri)
+
+Indicate that a namespace declaration for this URI should be included
+with the next element to be started.
 
 =back
 
