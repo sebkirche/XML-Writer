@@ -3,7 +3,7 @@
 # Copyright (c) 1999 by Megginson Technologies.
 # No warranty.  Commercial and non-commercial use freely permitted.
 #
-# $Id: Writer.pm,v 1.6 2004/02/22 16:09:16 ed Exp $
+# $Id: Writer.pm,v 1.20 2004/02/22 19:54:20 josephw Exp $
 ########################################################################
 
 package XML::Writer;
@@ -14,7 +14,7 @@ use strict;
 use vars qw($VERSION);
 use Carp;
 use IO::Handle;
-$VERSION = "0.4.2";
+$VERSION = "0.4.5";
 
 
 
@@ -33,32 +33,32 @@ $VERSION = "0.4.2";
 sub new {
   my ($class, %params) = (@_);
 
-				# If the user wants namespaces,
-				# intercept the request here; it will
-				# come back to this constructor
-				# from within XML::Writer::Namespaces::new()
+                                # If the user wants namespaces,
+                                # intercept the request here; it will
+                                # come back to this constructor
+                                # from within XML::Writer::Namespaces::new()
   if ($params{NAMESPACES}) {
     delete $params{NAMESPACES};
     return new XML::Writer::Namespaces(%params);
   }
 
-				# Set up $self and basic parameters
+                                # Set up $self and basic parameters
   my $self;
   my $output;
   my $unsafe = $params{UNSAFE};
   my $newlines = $params{NEWLINES};
   my $dataMode = $params{DATA_MODE};
-  my $dataIndent = $params{DATA_INDENT};
+  my $dataIndent = $params{DATA_INDENT} || 0;
 
-				# If the NEWLINES parameter is specified,
-				# set the $nl variable appropriately
+                                # If the NEWLINES parameter is specified,
+                                # set the $nl variable appropriately
   my $nl = '';
   if ($newlines) {
     $nl = "\n";
   }
 
 
-				# Parse variables
+                                # Parse variables
   my @elementStack = ();
   my $elementLevel = 0;
   my %seen = ();
@@ -67,6 +67,7 @@ sub new {
   my @hasDataStack = ();
   my $hasElement = 0;
   my @hasElementStack = ();
+  my $hasHeading = 0; # Does this document have anything before the first element?
 
   #
   # Private method to show attributes.
@@ -81,9 +82,9 @@ sub new {
     }
   };
 
-				# Method implementations: the SAFE_
-				# versions perform error checking
-				# and then call the regular ones.
+                                # Method implementations: the SAFE_
+                                # versions perform error checking
+                                # and then call the regular ones.
   my $end = sub {
     $output->print("\n");
   };
@@ -106,6 +107,10 @@ sub new {
     if ($standalone && $standalone ne 'no') {
       $standalone = 'yes';
     }
+
+    # This line is questionable, but changing current behaviour
+    # may be a bad idea. There seems to be a mismatch with the
+    # documentation, though.
     $encoding = "UTF-8" unless $encoding;
     $output->print("<?xml version=\"1.0\"");
     if ($encoding) {
@@ -115,6 +120,7 @@ sub new {
       $output->print(" standalone=\"$standalone\"");
     }
     $output->print("?>\n");
+    $hasHeading = 1;
   };
 
   my $SAFE_xmlDecl = sub {
@@ -136,18 +142,21 @@ sub new {
     }
     if ($elementLevel == 0) {
       $output->print("\n");
+      $hasHeading = 1;
     }
   };
 
   my $SAFE_pi = sub {
     my ($name, $data) = (@_);
     $seen{ANYTHING} = 1;
-    if ($name =~ /xml/i) {
+    if (($name =~ /^xml/i) && ($name !~ /^xml-stylesheet$/i)) {
       carp("Processing instruction target begins with 'xml'");
     } 
 
-    if ($name =~ /\?\>/ || $data =~ /\?\>/) {
+    if ($name =~ /\?\>/ || (defined($data) && $data =~ /\?\>/)) {
       croak("Processing instruction may not contain '?>'");
+    } elsif ($name =~ /\s/) {
+      croak("Processing instruction name may not contain whitespace");
     } else {
       &{$pi};
     }
@@ -158,6 +167,7 @@ sub new {
     $output->print("<!-- $data -->");
     if ($elementLevel == 0) {
       $output->print("\n");
+      $hasHeading = 1;
     }
   };
 
@@ -179,11 +189,15 @@ sub new {
     my ($name, $publicId, $systemId) = (@_);
     $output->print("<!DOCTYPE $name");
     if ($publicId) {
+      unless ($systemId) {
+        croak("A DOCTYPE declaration with a public ID must also have a system ID");
+      }
       $output->print(" PUBLIC \"$publicId\" \"$systemId\"");
     } elsif ($systemId) {
       $output->print(" SYSTEM \"$systemId\"");
     }
     $output->print(">\n");
+    $hasHeading = 1;
   };
 
   my $SAFE_doctype = sub {
@@ -201,7 +215,7 @@ sub new {
 
   my $startTag = sub {
     my $name = $_[0];
-    if ($dataMode) {
+    if ($dataMode && ($hasHeading || $elementLevel)) {
       $output->print("\n");
       $output->print(" " x ($elementLevel * $dataIndent));
     }
@@ -228,8 +242,8 @@ sub new {
       croak("Attempt to insert start tag after close of document element");
     } elsif ($elementLevel == 0 && $seen{DOCTYPE} && $name ne $seen{DOCTYPE}) {
       croak("Document element is \"$name\", but DOCTYPE is \""
-	    . $seen{DOCTYPE}
-	    . "\"");
+            . $seen{DOCTYPE}
+            . "\"");
     } elsif ($dataMode && $hasData) {
       croak("Mixed content not allowed in data mode: element $name");
     } else {
@@ -241,7 +255,7 @@ sub new {
 
   my $emptyTag = sub {
     my $name = $_[0];
-    if ($dataMode) {
+    if ($dataMode && ($hasHeading || $elementLevel)) {
       $output->print("\n");
       $output->print(" " x ($elementLevel * $dataIndent));
     }
@@ -262,8 +276,8 @@ sub new {
       croak("Attempt to insert empty tag after close of document element");
     } elsif ($elementLevel == 0 && $seen{DOCTYPE} && $name ne $seen{DOCTYPE}) {
       croak("Document element is \"$name\", but DOCTYPE is \""
-	    . $seen{DOCTYPE}
-	    . "\"");
+            . $seen{DOCTYPE}
+            . "\"");
     } elsif ($dataMode && $hasData) {
       croak("Mixed content not allowed in data mode: element $name");
     } else {
@@ -329,6 +343,10 @@ sub new {
     #
   };
 
+  my $SAFE_raw = sub {
+  	croak('raw() is only available when UNSAFE is set');
+  };
+
   my $cdata = sub {
       my $data = $_[0];
       $data    =~ s/\]\]>/\]\]\]\]><!\[CDATA\[>/g;
@@ -346,37 +364,37 @@ sub new {
     }
   };
 
-				# Assign the correct closures based on
-				# the UNSAFE parameter
+                                # Assign the correct closures based on
+                                # the UNSAFE parameter
   if ($unsafe) {
     $self = {'END' => $end,
-	     'XMLDECL' => $xmlDecl,
-	     'PI' => $pi,
-	     'COMMENT' => $comment,
-	     'DOCTYPE' => $doctype,
-	     'STARTTAG' => $startTag,
-	     'EMPTYTAG' => $emptyTag,
-	     'ENDTAG' => $endTag,
-	     'CHARACTERS' => $characters,
-	     'RAW' => $raw,
-	     'CDATA' => $cdata,
-	    };
+             'XMLDECL' => $xmlDecl,
+             'PI' => $pi,
+             'COMMENT' => $comment,
+             'DOCTYPE' => $doctype,
+             'STARTTAG' => $startTag,
+             'EMPTYTAG' => $emptyTag,
+             'ENDTAG' => $endTag,
+             'CHARACTERS' => $characters,
+             'RAW' => $raw,
+             'CDATA' => $cdata
+            };
   } else {
     $self = {'END' => $SAFE_end,
-	     'XMLDECL' => $SAFE_xmlDecl,
-	     'PI' => $SAFE_pi,
-	     'COMMENT' => $SAFE_comment,
-	     'DOCTYPE' => $SAFE_doctype,
-	     'STARTTAG' => $SAFE_startTag,
-	     'EMPTYTAG' => $SAFE_emptyTag,
-	     'ENDTAG' => $SAFE_endTag,
-	     'CHARACTERS' => $SAFE_characters,
-	     'RAW' => $raw,                    # deliberately unsafe
-	     'CDATA' => $SAFE_cdata,
-	    };
+             'XMLDECL' => $SAFE_xmlDecl,
+             'PI' => $SAFE_pi,
+             'COMMENT' => $SAFE_comment,
+             'DOCTYPE' => $SAFE_doctype,
+             'STARTTAG' => $SAFE_startTag,
+             'EMPTYTAG' => $SAFE_emptyTag,
+             'ENDTAG' => $SAFE_endTag,
+             'CHARACTERS' => $SAFE_characters,
+             'RAW' => $SAFE_raw,               # This will intentionally fail
+             'CDATA' => $SAFE_cdata
+            };
   }
 
-				# Query methods
+                                # Query methods
   $self->{'IN_ELEMENT'} = sub {
     my ($ancestor) = (@_);
     return $elementStack[$#elementStack] eq $ancestor;
@@ -400,19 +418,19 @@ sub new {
     return $elementStack[$#elementStack-$n];
   };
 
-				# Set and get the output destination.
+                                # Set and get the output destination.
   $self->{'GETOUTPUT'} = sub {
     return $output;
   };
 
   $self->{'SETOUTPUT'} = sub {
     my $newOutput = $_[0];
-				# If there is no OUTPUT parameter,
-				# use standard output
+                                # If there is no OUTPUT parameter,
+                                # use standard output
     unless ($newOutput) {
       $newOutput = new IO::Handle();
       $newOutput->fdopen(fileno(STDOUT), "w") ||
-	croak("Cannot write to standard output");
+        croak("Cannot write to standard output: $!");
     }
     $output = $newOutput;
   };
@@ -433,10 +451,10 @@ sub new {
     return $dataIndent;
   };
 
-				# Set the output.
+                                # Set the output.
   &{$self->{'SETOUTPUT'}}($params{'OUTPUT'});
 
-				# Return the blessed object.
+                                # Return the blessed object.
   return bless $self, $class;
 }
 
@@ -666,8 +684,8 @@ sub removePrefix {
 sub _checkAttributes {
   my %anames;
   my $i = 1;
-  while ($_[$i]) {
-    my $name = $_[$i];
+  while ($_[0]->[$i]) {
+    my $name = $_[0]->[$i];
     $i += 2;
     if ($anames{$name}) {
       croak("Two attributes named \"$name\"");
@@ -712,40 +730,48 @@ sub new {
 
   my $unsafe = $params{UNSAFE};
 
-				# Snarf the prefix map, if any, and
-				# note the default prefix.
+                                # Snarf the prefix map, if any, and
+                                # note the default prefix.
   my %prefixMap = ();
   if ($params{PREFIX_MAP}) {
     %prefixMap = (%{$params{PREFIX_MAP}});
     delete $params{PREFIX_MAP};
   }
-  my $defaultPrefix = $prefixMap{''};
-  delete $prefixMap{''};
+  $prefixMap{'http://www.w3.org/XML/1998/namespace'} = 'xml';
 
-				# Generate the reverse map for URIs
+                                # Generate the reverse map for URIs
   my %uriMap = ();
   my $key;
   foreach $key (keys(%prefixMap)) {
     $uriMap{$prefixMap{$key}} = $key;
   }
 
-				# Create an instance of the parent.
+  my $defaultPrefix = $uriMap{''};
+  delete $prefixMap{$defaultPrefix} if ($defaultPrefix);
+
+                                # Create an instance of the parent.
   my $self = new XML::Writer(%params);
 
-				# Snarf the parent's methods that we're
-				# going to override.
+                                # Snarf the parent's methods that we're
+                                # going to override.
   my $OLD_startTag = $self->{STARTTAG};
   my $OLD_emptyTag = $self->{EMPTYTAG};
   my $OLD_endTag = $self->{ENDTAG};
 
-				# State variables
+                                # State variables
   my $prefixCounter = 1;
   my @nsDecls = ();
-  my $nsDecls = {};
+  my $nsDecls = {'http://www.w3.org/XML/1998/namespace' => 'xml'};
   my @nsDefaultDecl = ();
   my $nsDefaultDecl = undef;
   my @nsCopyFlag = ();
   my $nsCopyFlag = 0;
+  my @forcedNSDecls = ();
+
+  if ($params{FORCED_NS_DECLS}) {
+    @forcedNSDecls = @{$params{FORCED_NS_DECLS}};
+    delete $params{FORCED_NS_DECLS};
+  }
 
   #
   # Push the current declaration state.
@@ -787,28 +813,28 @@ sub new {
     my ($uri, $local) = @{$$nameref};
     my $prefix = $prefixMap{$uri};
 
-				# Is this an element name that matches
-				# the default NS?
-    if (!$attFlag && ($uri eq $defaultPrefix)) {
+                                # Is this an element name that matches
+                                # the default NS?
+    if (!$attFlag && $defaultPrefix && ($uri eq $defaultPrefix)) {
       unless ($nsDefaultDecl) {
-	push @{$atts}, 'xmlns';
-	push @{$atts}, $uri;
-	$nsDefaultDecl = 1;
+        push @{$atts}, 'xmlns';
+        push @{$atts}, $uri;
+        $nsDefaultDecl = 1;
       }
       $$nameref = $local;
       
-				# Is there a straight-forward prefix?
+                                # Is there a straight-forward prefix?
     } elsif ($prefix) {
       unless ($nsDecls->{$uri}) {
-				# Copy on write (FIXME: duplicated)
-	unless ($nsCopyFlag) {
-	  $nsCopyFlag = 1;
-	  my %decls = (%{$nsDecls});
-	  $nsDecls = \%decls;
-	}
-	$nsDecls->{$uri} = $prefix;
-	push @{$atts}, "xmlns:$prefix";
-	push @{$atts}, $uri;
+                                # Copy on write (FIXME: duplicated)
+        unless ($nsCopyFlag) {
+          $nsCopyFlag = 1;
+          my %decls = (%{$nsDecls});
+          $nsDecls = \%decls;
+        }
+        $nsDecls->{$uri} = $prefix;
+        push @{$atts}, "xmlns:$prefix";
+        push @{$atts}, $uri;
       }
       $$nameref = "$prefix:$local";
 
@@ -817,9 +843,9 @@ sub new {
       $prefixMap{$uri} = $prefix;
       $uriMap{$prefix} = $uri;
       unless ($nsCopyFlag) {
-	$nsCopyFlag = 1;
-	my %decls = (%{$nsDecls});
-	$nsDecls = \%decls;
+        $nsCopyFlag = 1;
+        my %decls = (%{$nsDecls});
+        $nsDecls = \%decls;
       }
       $nsDecls->{$uri} = $prefix;
       push @{$atts}, "xmlns:$prefix";
@@ -839,9 +865,19 @@ sub new {
     my $i = 1;
     while ($_[0]->[$i]) {
       if (ref($_[0]->[$i]) eq 'ARRAY') {
-	&{$processName}(\$_[0]->[$i], $_[0], 1);
+        &{$processName}(\$_[0]->[$i], $_[0], 1);
       }
       $i += 2;
+    }
+
+    # We only do this for the outermost element
+    if (@forcedNSDecls) {
+      foreach (@forcedNSDecls) {
+        my @dummy = ($_, 'dummy');
+        my $d2 = \@dummy;
+        &{$processName}(\$d2, $_[0], 1);
+      }
+      @forcedNSDecls = ();
     }
   };
 
@@ -892,7 +928,7 @@ sub new {
     $self->{PI} = sub {
       my $target = $_[0];
       if ($target =~ /:/) {
-	croak "PI target '$target' contains a colon.";
+        croak "PI target '$target' contains a colon.";
       }
       &{$OLD_pi};
     }
@@ -918,7 +954,7 @@ sub new {
   #
   $self->{REMOVEPREFIX} = sub {
     my ($uri) = (@_);
-    if ($defaultPrefix eq $uri) {
+    if ($defaultPrefix && ($defaultPrefix eq $uri)) {
       $defaultPrefix = undef;
     }
     delete $prefixMap{$uri};
@@ -958,32 +994,32 @@ sub _checkNSNames {
   my $i = 1;
   my $name = $names->[0];
 
-				# Check the element name.
+                                # Check the element name.
   if (ref($name) eq 'ARRAY') {
     if ($name->[1] =~ /:/) {
       croak("Local part of element name '" .
-	    $name->[1] .
-	    "' contains a colon.");
+            $name->[1] .
+            "' contains a colon.");
     }
   } elsif ($name =~ /:/) {
     croak("Element name '$name' contains a colon.");
   }
 
-				# Check the attribute names.
+                                # Check the attribute names.
   while ($names->[$i]) {
     my $name = $names->[$i];
     if (ref($name) eq 'ARRAY') {
       my $local = $name->[1];
       if ($local =~ /:/) {
-	croak "Local part of attribute name '$local' contains a colon.";
+        croak "Local part of attribute name '$local' contains a colon.";
       }
     } else {
       if ($name =~ /^(xmlns|.*:)/) {
-	if ($name =~ /^xmlns/) {
-	  croak "Attribute name '$name' begins with 'xmlns'";
-	} elsif ($name =~ /:/) {
-	  croak "Attribute name '$name' contains ':'";
-	}
+        if ($name =~ /^xmlns/) {
+          croak "Attribute name '$name' begins with 'xmlns'";
+        } elsif ($name =~ /:/) {
+          croak "Attribute name '$name' contains ':'";
+        }
       }
     }
     $i += 2;
@@ -1097,6 +1133,14 @@ generate prefixes of the form "__NS1", "__NS2", etc.
 
 To set the default namespace, use '' for the prefix.
 
+=item FORCED_NS_DECLS
+
+An array reference; if this parameter is present, the document element
+will contain declarations for all the given namespace URIs.
+Declaring namespaces in advance is particularly useful when a large
+number of elements from a namespace are siblings, but don't share a direct
+ancestor from the same namespace.
+
 =item NEWLINES
 
 A true or false value; if this parameter is present and its value is
@@ -1152,7 +1196,7 @@ converted to 'yes').
 Add a DOCTYPE declaration to an XML document.  The declaration must
 appear before the beginning of the root element.  If you provide a
 publicId, you must provide a systemId as well, but you may provide
-just a system ID.
+just a system ID by passing 'undef' for the publicId.
 
   $writer->doctype("html");
 
@@ -1243,8 +1287,8 @@ elements.
 
 Print data completely unquoted and unchecked to the XML document.  For
 example C<raw('<')> will print a literal < character.  This
-necessarily bypasses all well-formedness checking, whether in unsafe
-mode or not.
+necessarily bypasses all well-formedness checking, and is therefore
+only available in unsafe mode.
 
 This can sometimes be useful for printing entities which are defined
 for your XML format but the module doesn't know about, for example
