@@ -2,7 +2,7 @@ README
 Changes
 MANIFEST
 Makefile.PL
+META.yml
 Writer.pm
 test.pl
 TODO
-META.yml                                 Module meta-data (added by MakeMaker)
