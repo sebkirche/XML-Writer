@@ -2,10 +2,10 @@
 ########################################################################
 # test.pl - test script for XML::Writer module.
 # Copyright (c) 1999 by Megginson Technologies.
-# Copyright (c) 2004 by Joseph Walton <joe@kafsemo.org>.
+# Copyright (c) 2004, 2005 by Joseph Walton <joe@kafsemo.org>.
 # No warranty.  Commercial and non-commercial use freely permitted.
 #
-# $Id: 01_main.t,v 1.5 2004/09/01 15:05:06 josephw Exp $
+# $Id: 01_main.t,v 1.8 2005/02/01 00:47:45 josephw Exp $
 ########################################################################
 
 # Before 'make install' is performed this script should be runnable with
@@ -13,7 +13,7 @@
 
 use strict;
 
-use Test::More(tests => 154);
+use Test::More(tests => 162);
 
 
 # Catch warnings
@@ -47,6 +47,7 @@ my $outputFile = IO::File->new_tmpfile or die "Unable to create temporary file: 
 sub getBufStr()
 {
 	local($/);
+	binmode($outputFile, ':bytes');
 	$outputFile->seek(0, 0);
 	return <$outputFile>;
 }
@@ -1305,6 +1306,75 @@ TEST: {
 	$w->setOutput();
 
 	is($w->getOutput(), \*STDOUT, 'If no output is given, STDOUT should be used');
+};
+
+# Create an ill-formed document using unsafe mode
+TEST: {
+	initEnv(UNSAFE => 1);
+
+	$w->xmlDecl('us-ascii');
+	$w->comment("--");
+	$w->characters("Test\n");
+	$w->cdata("Test\n");
+	$w->doctype('y', undef, '/');
+	$w->emptyTag('x');
+	$w->end();
+	checkResult(<<EOR, 'Unsafe mode should not enforce validity tests.');
+<?xml version="1.0" encoding="us-ascii"?>
+<!-- -- -->
+Test
+<![CDATA[Test
+]]><!DOCTYPE y SYSTEM "/">
+<x />
+EOR
+
+};
+
+# Ensure that newlines in attributes are escaped
+TEST: {
+	initEnv();
+
+	$w->emptyTag('x', 'a' => "A\nB");
+	$w->end();
+
+	checkResult("<x a=\"A&#10;B\" />\n", 'Newlines in attribute values should be escaped');
+};
+
+# Make sure UTF-8 is written properly
+TEST: {
+	skip 'Unicode only supported with Perl >= 5.8', 2 unless $] >= 5.008;
+
+	initEnv(ENCODING => 'utf-8', DATA_MODE => 1);
+
+	$w->xmlDecl();
+	$w->startTag('a');
+	$w->dataElement('b', '$');
+	$w->dataElement('b', "\x{A3}");
+	$w->dataElement('b', "\x{20AC}");
+	$w->endTag('a');
+	$w->end();
+
+	checkResult(<<EOR, 'When requested, output should be UTF-8 encoded');
+<?xml version="1.0" encoding="utf-8"?>
+
+<a>
+<b>\x{24}</b>
+<b>\x{C2}\x{A3}</b>
+<b>\x{E2}\x{82}\x{AC}</b>
+</a>
+EOR
+};
+
+# Capture generated XML in a scalar
+TEST: {
+	my $s;
+
+	$w = new XML::Writer(OUTPUT => \$s);
+	$w->emptyTag('x');
+	$w->end();
+
+	wasNoWarning('Capturing in a scalar should not cause warnings');
+	is($s, "<x />\n", "Output should be stored in a scalar, if one is passed");
 };
 
 

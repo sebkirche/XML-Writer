@@ -1,10 +1,10 @@
 ########################################################################
 # Writer.pm - write an XML document.
 # Copyright (c) 1999 by Megginson Technologies.
-# Copyright (c) 2004 by Joseph Walton <joe@kafsemo.org>.
+# Copyright (c) 2004, 2005 by Joseph Walton <joe@kafsemo.org>.
 # No warranty.  Commercial and non-commercial use freely permitted.
 #
-# $Id: Writer.pm,v 1.29 2004/09/01 15:16:08 josephw Exp $
+# $Id: Writer.pm,v 1.34 2005/02/01 13:11:41 josephw Exp $
 ########################################################################
 
 package XML::Writer;
@@ -15,7 +15,7 @@ use strict;
 use vars qw($VERSION);
 use Carp;
 use IO::Handle;
-$VERSION = "0.520";
+$VERSION = "0.530";
 
 
 
@@ -58,6 +58,7 @@ sub new {
     $nl = "\n";
   }
 
+  my $outputEncoding = $params{ENCODING};
 
                                 # Parse variables
   my @elementStack = ();
@@ -79,6 +80,7 @@ sub new {
     while ($atts->[$i]) {
       my $aname = $atts->[$i++];
       my $value = _escapeLiteral($atts->[$i++]);
+      $value =~ s/\x{a}/\&#10\;/g;
       $output->print(" $aname=\"$value\"");
     }
   };
@@ -112,7 +114,7 @@ sub new {
     # This line is questionable, but changing current behaviour
     # may be a bad idea. There seems to be a mismatch with the
     # documentation, though.
-    $encoding = "UTF-8" unless $encoding;
+    $encoding ||= $outputEncoding || "UTF-8";
     $output->print("<?xml version=\"1.0\"");
     if ($encoding) {
       $output->print(" encoding=\"$encoding\"");
@@ -426,9 +428,19 @@ sub new {
 
   $self->{'SETOUTPUT'} = sub {
     my $newOutput = $_[0];
+
+    if (ref($newOutput) eq 'SCALAR') {
+      $newOutput = new XML::Writer::String($newOutput);
+    }
                                 # If there is no OUTPUT parameter,
                                 # use standard output
     $output = $newOutput || \*STDOUT;
+    if ($outputEncoding) {
+      if (lc($outputEncoding) ne 'utf-8') {
+        die 'The only supported encoding is utf-8';
+      }
+      binmode($output, ':encoding(utf-8)');
+    }
   };
 
   $self->{'SETDATAMODE'} = sub {
@@ -1052,6 +1064,26 @@ sub forceNSDecl
 }
 
 
+package XML::Writer::String;
+
+# Internal class, behaving sufficiently like an IO::Handle,
+#  that stores written output in a string
+#
+# Heavily inspired by Simon Oliver's XML::Writer::String
+
+sub new
+{
+  my $class = shift;
+  my $scalar_ref = shift;
+  return bless($scalar_ref, $class);
+}
+
+sub print
+{
+  ${(shift)} .= join('', @_);
+  return 1;
+}
+
 1;
 __END__
 
@@ -1120,8 +1152,9 @@ Arguments are an anonymous hash array of parameters:
 =item OUTPUT
 
 An object blessed into IO::Handle or one of its subclasses (such as
-IO::File); if this parameter is not present, the module will write to
-standard output.
+IO::File), or a reference to a string; if this parameter is not present,
+the module will write to standard output. If a string reference is passed,
+it will capture the generated XML.
 
 =item NAMESPACES
 
@@ -1195,6 +1228,12 @@ elements as content.
 A numeric value; if this parameter is present, it represents the
 indent step for elements in data mode (it will be ignored when not in
 data mode).
+
+=item ENCODING
+
+A character encoding; currently this must be exactly 'utf-8'. If present,
+it will be used for the underlying character encoding and as the
+default in the XML declaration.
 
 =back
 
