@@ -5,7 +5,7 @@
 # Copyright (c) 2004, 2005 by Joseph Walton <joe@kafsemo.org>.
 # No warranty.  Commercial and non-commercial use freely permitted.
 #
-# $Id: 01_main.t,v 1.10 2005/02/18 07:50:27 josephw Exp $
+# $Id: 01_main.t,v 1.13 2005/05/10 01:14:21 josephw Exp $
 ########################################################################
 
 # Before 'make install' is performed this script should be runnable with
@@ -13,7 +13,7 @@
 
 use strict;
 
-use Test::More(tests => 164);
+use Test::More(tests => 175);
 
 
 # Catch warnings
@@ -106,7 +106,7 @@ sub checkResult($$)
 		}
 	}
 
-	wasNoWarning('Expected result tests should not cause warnings');
+	wasNoWarning('(no warnings)');
 }
 
 #
@@ -1347,20 +1347,26 @@ SKIP: {
 	initEnv(ENCODING => 'utf-8', DATA_MODE => 1);
 
 	$w->xmlDecl();
+	$w->comment("\$ \x{A3} \x{20AC}");
 	$w->startTag('a');
 	$w->dataElement('b', '$');
 	$w->dataElement('b', "\x{A3}");
 	$w->dataElement('b', "\x{20AC}");
+	$w->startTag('c');
+	$w->cdata(" \$ \x{A3} \x{20AC} ");
+	$w->endTag('c');
 	$w->endTag('a');
 	$w->end();
 
 	checkResult(<<EOR, 'When requested, output should be UTF-8 encoded');
 <?xml version="1.0" encoding="utf-8"?>
+<!-- \$ \x{C2}\x{A3} \x{E2}\x{82}\x{AC} -->
 
 <a>
 <b>\x{24}</b>
 <b>\x{C2}\x{A3}</b>
 <b>\x{E2}\x{82}\x{AC}</b>
+<c><![CDATA[ \$ \x{C2}\x{A3} \x{E2}\x{82}\x{AC} ]]></c>
 </a>
 EOR
 };
@@ -1392,6 +1398,130 @@ TEST: {
 
 	is($s, "<txt>blah</txt></foo>\n", 'Resetting the scalar should work properly');
 };
+
+# Ensure that ENCODING and SCALAR don't cause failure when used together
+TEST: {
+	my $s;
+
+	ok(eval {$w = new XML::Writer(OUTPUT => \$s,
+		ENCODING => 'utf-8'
+	);}, 'OUTPUT and ENCODING should not cause failure');
+}
+
+# Verify that unknown encodings cause failure
+TEST: {
+	expectError('encoding', eval {
+		initEnv(ENCODING => 'x-unsupported-encoding');
+	});
+}
+
+# Make sure scalars are built up as UTF-8 (if UTF-8 is passed in)
+SKIP: {
+	skip 'Unicode only supported with Perl >= 5.8', 2 unless $] >= 5.008;
+
+	my $s;
+
+	$w = new XML::Writer(OUTPUT => \$s);
+
+	my $x = 'x';
+	utf8::upgrade($x);
+
+	$w->emptyTag($x);
+	$w->end();
+
+	ok(utf8::is_utf8($s), 'A storage scalar should preserve utf8-ness');
+
+
+	undef($s);
+	$w = new XML::Writer(OUTPUT => \$s);
+	$w->startTag('a');
+	$w->dataElement('x', "\$");
+	$w->dataElement('x', "\x{A3}");
+	$w->dataElement('x', "\x{20AC}");
+	$w->endTag('a');
+	$w->end();
+
+	is($s, "<a><x>\$</x><x>\x{A3}</x><x>\x{20AC}</x></a>\n",
+		'A storage scalar should work with utf8 strings');
+}
+
+# Test US-ASCII encoding
+SKIP: {
+	skip 'Unicode only supported with Perl >= 5.8', 7 unless $] >= 5.008;
+
+	initEnv(ENCODING => 'us-ascii', DATA_MODE => 1);
+
+	$w->xmlDecl();
+	$w->startTag('a');
+	$w->dataElement('x', "\$", 'a' => "\$");
+	$w->dataElement('x', "\x{A3}", 'a' => "\x{A3}");
+	$w->dataElement('x', "\x{20AC}", 'a' => "\x{20AC}");
+	$w->endTag('a');
+	$w->end();
+
+	checkResult(<<'EOR', 'US-ASCII support should cover text and attributes');
+<?xml version="1.0" encoding="us-ascii"?>
+
+<a>
+<x a="$">$</x>
+<x a="&#xA3;">&#xA3;</x>
+<x a="&#x20AC;">&#x20AC;</x>
+</a>
+EOR
+
+
+	# Make sure non-ASCII characters that can't be represented
+	#  as references cause failure
+	my $text = "\x{A3}";
+#	utf8::upgrade($text);
+
+	initEnv(ENCODING => 'us-ascii', DATA_MODE => 1);
+	$w->startTag('a');
+	$w->cdata('Text');
+	expectError('ASCII', eval {
+		$w->cdata($text);
+	});
+
+
+	initEnv(ENCODING => 'us-ascii', DATA_MODE => 1);
+	$w->startTag('a');
+	$w->comment('Text');
+	expectError('ASCII', eval {
+		$w->comment($text);
+	});
+
+
+	initEnv(ENCODING => 'us-ascii', DATA_MODE => 1);
+	expectError('ASCII', eval {
+		$w->emptyTag("\x{DC}berpr\x{FC}fung");
+	});
+
+
+	# Make sure Unicode generates warnings when it makes it through
+	#  to a US-ASCII-encoded stream
+	initEnv(ENCODING => 'us-ascii', DATA_MODE => 1, UNSAFE => 1);
+	$w->startTag('a');
+	$w->cdata($text);
+	$w->endTag('a');
+	$w->end();
+
+	$outputFile->flush();
+	ok($warning && $warning =~ /does not map to ascii/,
+		'Perl IO should warn about non-ASCII characters in output');
+	
+
+	initEnv(ENCODING => 'us-ascii', DATA_MODE => 1, UNSAFE => 1);
+	$w->startTag('a');
+	$w->comment($text);
+	$w->endTag('a');
+	$w->end();
+
+	$outputFile->flush();
+	ok($warning && $warning =~ /does not map to ascii/,
+		'Perl IO should warn about non-ASCII characters in output');
+
+}
+
 
 # Free test resources
 $outputFile->close() or die "Unable to close temporary file: $!";

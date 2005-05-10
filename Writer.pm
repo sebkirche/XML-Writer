@@ -4,7 +4,7 @@
 # Copyright (c) 2004, 2005 by Joseph Walton <joe@kafsemo.org>.
 # No warranty.  Commercial and non-commercial use freely permitted.
 #
-# $Id: Writer.pm,v 1.36 2005/03/14 22:15:14 josephw Exp $
+# $Id: Writer.pm,v 1.40 2005/05/10 02:52:09 josephw Exp $
 ########################################################################
 
 package XML::Writer;
@@ -15,7 +15,7 @@ use strict;
 use vars qw($VERSION);
 use Carp;
 use IO::Handle;
-$VERSION = "0.531";
+$VERSION = "0.540";
 
 
 
@@ -59,6 +59,15 @@ sub new {
   }
 
   my $outputEncoding = $params{ENCODING};
+  my ($checkUnencodedRepertoire, $escapeEncoding);
+  if (lc($outputEncoding) eq 'us-ascii') {
+    $checkUnencodedRepertoire = \&_croakUnlessASCII;
+    $escapeEncoding = \&_escapeASCII;
+  } else {
+    my $doNothing = sub {};
+    $checkUnencodedRepertoire = $doNothing;
+    $escapeEncoding = $doNothing;
+  }
 
                                 # Parse variables
   my @elementStack = ();
@@ -81,6 +90,7 @@ sub new {
       my $aname = $atts->[$i++];
       my $value = _escapeLiteral($atts->[$i++]);
       $value =~ s/\x{a}/\&#10\;/g;
+      &{$escapeEncoding}($value);
       $output->print(" $aname=\"$value\"");
     }
   };
@@ -183,6 +193,7 @@ sub new {
     if ($data =~ /-->/) {
       croak("Comment may not contain '-->'");
     } else {
+      &{$checkUnencodedRepertoire}($data);
       $seen{ANYTHING} = 1;
       &{$comment};
     }
@@ -239,6 +250,7 @@ sub new {
   my $SAFE_startTag = sub {
     my $name = $_[0];
 
+    &{$checkUnencodedRepertoire}($name);
     _checkAttributes(\@_);
 
     if ($seen{ELEMENT} && $elementLevel == 0) {
@@ -273,6 +285,7 @@ sub new {
   my $SAFE_emptyTag = sub {
     my $name = $_[0];
 
+    &{$checkUnencodedRepertoire}($name);
     _checkAttributes(\@_);
 
     if ($seen{ELEMENT} && $elementLevel == 0) {
@@ -325,6 +338,7 @@ sub new {
       $data =~ s/\</\&lt\;/g;
       $data =~ s/\>/\&gt\;/g;
     }
+    &{$escapeEncoding}($data);
     $output->print($data);
     $hasData = 1;
   };
@@ -363,6 +377,7 @@ sub new {
     } elsif ($dataMode && $hasElement) {
       croak("Mixed content not allowed in data mode: characters");
     } else {
+      &{$checkUnencodedRepertoire}($_[0]);
       &{$cdata};
     }
   };
@@ -430,16 +445,20 @@ sub new {
     my $newOutput = $_[0];
 
     if (ref($newOutput) eq 'SCALAR') {
-      $newOutput = new XML::Writer::_String($newOutput);
-    }
+      $output = new XML::Writer::_String($newOutput);
+    } else {
                                 # If there is no OUTPUT parameter,
                                 # use standard output
-    $output = $newOutput || \*STDOUT;
-    if ($outputEncoding) {
-      if (lc($outputEncoding) ne 'utf-8') {
-        die 'The only supported encoding is utf-8';
+      $output = $newOutput || \*STDOUT;
+      if ($outputEncoding) {
+        if (lc($outputEncoding) eq 'utf-8') {
+          binmode($output, ':encoding(utf-8)');
+        } elsif (lc($outputEncoding) eq 'us-ascii') {
+          binmode($output, ':encoding(us-ascii)');
+        } else {
+          die 'The only supported encodings are utf-8 and us-ascii';
+        }
       }
-      binmode($output, ':encoding(utf-8)');
     }
   };
 
@@ -715,6 +734,16 @@ sub _escapeLiteral {
     $data =~ s/\"/\&quot\;/g;
   }
   return $data;
+}
+
+sub _escapeASCII($) {
+  $_[0] =~ s/([^\x00-\x7F])/sprintf('&#x%X;', ord($1))/ge;
+}
+
+sub _croakUnlessASCII($) {
+  if ($_[0] =~ /[^\x00-\x7F]/) {
+    croak('Non-ASCII characters are not permitted in this part of a US-ASCII document');
+  }
 }
 
 
@@ -1154,7 +1183,8 @@ Arguments are an anonymous hash array of parameters:
 An object blessed into IO::Handle or one of its subclasses (such as
 IO::File), or a reference to a string; if this parameter is not present,
 the module will write to standard output. If a string reference is passed,
-it will capture the generated XML.
+it will capture the generated XML (as a string; to get bytes use the
+C<Encode> module).
 
 =item NAMESPACES
 
@@ -1231,8 +1261,8 @@ data mode).
 
 =item ENCODING
 
-A character encoding; currently this must be exactly 'utf-8'. If present,
-it will be used for the underlying character encoding and as the
+A character encoding; currently this must be one of 'utf-8' or 'us-ascii'.
+If present, it will be used for the underlying character encoding and as the
 default in the XML declaration.
 
 =back
@@ -1249,7 +1279,7 @@ closed:
 
 Add an XML declaration to the beginning of an XML document.  The
 version will always be "1.0".  If you provide a non-null encoding or
-standalone argument, its value will appear in the declaration (and
+standalone argument, its value will appear in the declaration (any
 non-null value for standalone except 'no' will automatically be
 converted to 'yes').
 
@@ -1558,7 +1588,7 @@ David Megginson E<lt>david@megginson.comE<gt>
 
 Copyright 1999, 2000 David Megginson E<lt>david@megginson.comE<gt>
 
-Copyright 2004 Joseph Walton E<lt>joe@kafsemo.orgE<gt>
+Copyright 2004, 2005 Joseph Walton E<lt>joe@kafsemo.orgE<gt>
 
 
 =head1 SEE ALSO
