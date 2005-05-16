@@ -5,7 +5,7 @@
 # Copyright (c) 2004, 2005 by Joseph Walton <joe@kafsemo.org>.
 # No warranty.  Commercial and non-commercial use freely permitted.
 #
-# $Id: 01_main.t,v 1.13 2005/05/10 01:14:21 josephw Exp $
+# $Id: 01_main.t,v 1.17 2005/05/16 01:24:35 josephw Exp $
 ########################################################################
 
 # Before 'make install' is performed this script should be runnable with
@@ -13,7 +13,7 @@
 
 use strict;
 
-use Test::More(tests => 175);
+use Test::More(tests => 177);
 
 
 # Catch warnings
@@ -30,6 +30,14 @@ sub wasNoWarning($)
 	if (!ok(!$warning, $reason)) {
 		diag($warning);
 	}
+}
+
+# Constants for Unicode support
+my $unicodeSkipMessage = 'Unicode only supported with Perl >= 5.8.1';
+
+sub isUnicodeSupported()
+{
+	return $] >= 5.008001;
 }
 
 require XML::Writer;
@@ -100,6 +108,7 @@ sub checkResult($$)
 					DISCARD_B => sub { diag("+$a[$_[1]]\n"); }
 				});
 			} else {
+				fail($explanation);
 				diag("         got: '$actual'\n");
 				diag("    expected: '$expected'\n");
 			}
@@ -1342,7 +1351,7 @@ TEST: {
 
 # Make sure UTF-8 is written properly
 SKIP: {
-	skip 'Unicode only supported with Perl >= 5.8', 2 unless $] >= 5.008;
+	skip $unicodeSkipMessage, 2 unless isUnicodeSupported();
 
 	initEnv(ENCODING => 'utf-8', DATA_MODE => 1);
 
@@ -1417,7 +1426,7 @@ TEST: {
 
 # Make sure scalars are built up as UTF-8 (if UTF-8 is passed in)
 SKIP: {
-	skip 'Unicode only supported with Perl >= 5.8', 2 unless $] >= 5.008;
+	skip $unicodeSkipMessage, 2 unless isUnicodeSupported();
 
 	my $s;
 
@@ -1447,7 +1456,7 @@ SKIP: {
 
 # Test US-ASCII encoding
 SKIP: {
-	skip 'Unicode only supported with Perl >= 5.8', 7 unless $] >= 5.008;
+	skip $unicodeSkipMessage, 7 unless isUnicodeSupported();
 
 	initEnv(ENCODING => 'us-ascii', DATA_MODE => 1);
 
@@ -1520,6 +1529,42 @@ EOR
 	ok($warning && $warning =~ /does not map to ascii/,
 		'Perl IO should warn about non-ASCII characters in output');
 
+}
+
+# Make sure comments are formatted in data mode
+TEST: {
+	initEnv(DATA_MODE => 1, DATA_INDENT => 1);
+
+	$w->xmlDecl();
+	$w->comment("Test");
+	$w->comment("Test");
+	$w->startTag("x");
+	$w->comment("Test 2");
+	$w->startTag("y");
+	$w->comment("Test 3");
+	$w->endTag("y");
+	$w->comment("Test 4");
+	$w->startTag("y");
+	$w->endTag("y");
+	$w->endTag("x");
+	$w->end();
+	$w->comment("Test 5");
+
+	checkResult(<<'EOR', 'Comments should be formatted like elements when in data mode');
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Test -->
+<!-- Test -->
+
+<x>
+ <!-- Test 2 -->
+ <y>
+  <!-- Test 3 -->
+ </y>
+ <!-- Test 4 -->
+ <y></y>
+</x>
+<!-- Test 5 -->
+EOR
 }
 
 

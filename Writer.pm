@@ -4,7 +4,7 @@
 # Copyright (c) 2004, 2005 by Joseph Walton <joe@kafsemo.org>.
 # No warranty.  Commercial and non-commercial use freely permitted.
 #
-# $Id: Writer.pm,v 1.40 2005/05/10 02:52:09 josephw Exp $
+# $Id: Writer.pm,v 1.44 2005/05/16 07:02:36 josephw Exp $
 ########################################################################
 
 package XML::Writer;
@@ -15,7 +15,7 @@ use strict;
 use vars qw($VERSION);
 use Carp;
 use IO::Handle;
-$VERSION = "0.540";
+$VERSION = "0.545";
 
 
 
@@ -89,7 +89,7 @@ sub new {
     while ($atts->[$i]) {
       my $aname = $atts->[$i++];
       my $value = _escapeLiteral($atts->[$i++]);
-      $value =~ s/\x{a}/\&#10\;/g;
+      $value =~ s/\x0a/\&#10\;/g;
       &{$escapeEncoding}($value);
       $output->print(" $aname=\"$value\"");
     }
@@ -177,8 +177,14 @@ sub new {
 
   my $comment = sub {
     my $data = $_[0];
+    if ($dataMode && $elementLevel) {
+      $output->print("\n");
+      $output->print(" " x ($elementLevel * $dataIndent));
+    }
     $output->print("<!-- $data -->");
-    if ($elementLevel == 0) {
+    if ($dataMode && $elementLevel) {
+      $hasElement = 1;
+    } elsif ($elementLevel == 0) {
       $output->print("\n");
       $hasHeading = 1;
     }
@@ -1299,7 +1305,7 @@ just a system ID by passing 'undef' for the publicId.
 Add a comment to an XML document.  If the comment appears outside the
 document element (either before the first start tag or after the last
 end tag), the module will add a carriage return after it to improve
-readability:
+readability. In data mode, comments will be treated as empty tags:
 
   $writer->comment("This is a comment");
 

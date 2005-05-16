@@ -2,7 +2,7 @@
 #XXXXXXX This is a prototype!!!  It will change in the future!!! XXXXX#
 meta-spec:    1.1
 name:         XML-Writer
-version:      0.540
+version:      0.545
 abstract:     Easily generate well-formed, namespace-aware XML.
 authored_by:
   - David Megginson <david@megginson.com>
@@ -11,6 +11,11 @@ authored_by:
 license:      perl
 distribution_type: module
 installdirs:  site
+
+build_requires:
+  perl: 5.006_000
+recommends:
+  perl: 5.008_001
 
 no_index:
   package:
