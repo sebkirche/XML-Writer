@@ -5,7 +5,7 @@
 # Copyright (c) 2004, 2005 by Joseph Walton <joe@kafsemo.org>.
 # No warranty.  Commercial and non-commercial use freely permitted.
 #
-# $Id: 01_main.t,v 1.17 2005/05/16 01:24:35 josephw Exp $
+# $Id: 01_main.t,v 1.22 2005/06/30 21:57:52 josephw Exp $
 ########################################################################
 
 # Before 'make install' is performed this script should be runnable with
@@ -13,7 +13,7 @@
 
 use strict;
 
-use Test::More(tests => 177);
+use Test::More(tests => 207);
 
 
 # Catch warnings
@@ -55,7 +55,7 @@ my $outputFile = IO::File->new_tmpfile or die "Unable to create temporary file: 
 sub getBufStr()
 {
 	local($/);
-	binmode($outputFile, ':bytes') if $] >= 5.008;
+	binmode($outputFile, ':bytes') if isUnicodeSupported();
 	$outputFile->seek(0, 0);
 	return <$outputFile>;
 }
@@ -68,6 +68,7 @@ sub initEnv(@)
 	# Reset the scratch file
 	$outputFile->seek(0, 0);
 	$outputFile->truncate(0);
+	binmode($outputFile, ':raw');
 
 	# Overwrite OUTPUT so it goes to the scratch file
 	$args{'OUTPUT'} = $outputFile;
@@ -153,7 +154,7 @@ TEST: {
 	$w->emptyTag("foo");
 	$w->end();
 	checkResult(<<"EOS", 'Empty element tag with XML declaration');
-<?xml version="1.0" encoding="UTF-8"?>
+<?xml version="1.0"?>
 <foo />
 EOS
 };
@@ -212,7 +213,7 @@ TEST: {
 	$w->emptyTag("foo");
 	$w->end();
 	checkResult(<<"EOS", 'A document with "standalone" declared');
-<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<?xml version="1.0" standalone="yes"?>
 <foo />
 EOS
 };
@@ -224,7 +225,7 @@ TEST: {
 	$w->emptyTag("foo");
 	$w->end();
 	checkResult(<<"EOS", "A document with 'standalone' declared as 'no'");
-<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<?xml version="1.0" standalone="no"?>
 <foo />
 EOS
 };
@@ -874,7 +875,7 @@ TEST: {
 	$w->emptyTag('doc');
 	$w->end();
 	checkResult(<<"EOS", "An empty element with DATA_MODE");
-<?xml version="1.0" encoding="UTF-8"?>
+<?xml version="1.0"?>
 
 <doc />
 EOS
@@ -893,7 +894,7 @@ TEST: {
 	$w->endTag('doc');
 	$w->end();
 	checkResult(<<"EOS", "A nested element with DATA_MODE and a declaration");
-<?xml version="1.0" encoding="UTF-8"?>
+<?xml version="1.0"?>
 
 <doc>
  <item />
@@ -1551,7 +1552,7 @@ TEST: {
 	$w->comment("Test 5");
 
 	checkResult(<<'EOR', 'Comments should be formatted like elements when in data mode');
-<?xml version="1.0" encoding="UTF-8"?>
+<?xml version="1.0"?>
 <!-- Test -->
 <!-- Test -->
 
@@ -1564,6 +1565,174 @@ TEST: {
  <y></y>
 </x>
 <!-- Test 5 -->
+EOR
+}
+
+# Test characters outside the BMP
+SKIP: {
+	skip $unicodeSkipMessage, 4 unless isUnicodeSupported();
+
+	my $s = "\x{10480}"; # U+10480 OSMANYA LETTER ALEF
+
+	initEnv(ENCODING => 'utf-8');
+
+	$w->dataElement('x', $s);
+	$w->end();
+
+	checkResult(<<"EOR", 'Characters outside the BMP should be encoded correctly in UTF-8');
+<x>\xF0\x90\x92\x80</x>
+EOR
+
+	initEnv(ENCODING => 'us-ascii');
+
+	$w->dataElement('x', $s);
+	$w->end();
+
+	checkResult(<<'EOR', 'Characters outside the BMP should be encoded correctly in US-ASCII');
+<x>&#x10480;</x>
+EOR
+}
+
+
+# Ensure 'ancestor' returns undef beyond the document
+TEST: {
+	initEnv();
+
+	is($w->ancestor(0), undef, 'With no document, ancestors should be undef');
+
+	$w->startTag('x');
+	is($w->ancestor(0), 'x', 'ancestor(0) should return the current element');
+	is($w->ancestor(1), undef, 'ancestor should return undef beyond the document');
+}
+
+# Don't allow undefined Unicode characters, but do allow whitespace
+TEST: {
+	# Test characters
+
+	initEnv();
+
+	$w->startTag('x');
+	expectError('\u0000', eval {
+		$w->characters("\x00");
+	});
+
+	initEnv();
+
+	$w->dataElement('x', "\x09\x0A\x0D ");
+	$w->end();
+
+	checkResult(<<"EOR", 'Whitespace below \u0020 is valid.');
+<x>\x09\x0A\x0D </x>
+EOR
+
+
+	# CDATA
+
+	initEnv();
+	$w->startTag('x');
+	expectError('\u0000', eval {
+		$w->cdata("\x00");
+	});
+
+	initEnv();
+
+	$w->startTag('x');
+	$w->cdata("\x09\x0A\x0D ");
+	$w->endTag('x');
+	$w->end();
+
+	checkResult(<<"EOR", 'Whitespace below \u0020 is valid.');
+<x><![CDATA[\x09\x0A\x0D ]]></x>
+EOR
+
+
+	# Attribute values
+
+	initEnv();
+	expectError('\u0000', eval {
+		$w->emptyTag('x', 'a' => "\x00");
+	});
+
+	initEnv();
+	$w->emptyTag('x', 'a' => "\x09\x0A\x0D ");
+	$w->end();
+
+	# Currently, \u000A is escaped. This test is for lack of errors,
+	#  not exact serialisation, so change it if necessary.
+	checkResult(<<"EOR", 'Whitespace below \u0020 is valid.');
+<x a="\x09&#10;\x0D " />
+EOR
+}
+
+# Unsafe mode should not enforce character validity tests
+TEST: {
+	initEnv(UNSAFE => 1);
+
+	$w->dataElement('x', "\x00");
+	$w->end();
+	checkResult(<<"EOR", 'Unsafe mode should not enforce character validity tests');
+<x>\x00</x>
+EOR
+
+	initEnv(UNSAFE => 1);
+	$w->startTag('x');
+	$w->cdata("\x00");
+	$w->endTag('x');
+	$w->end();
+	checkResult(<<"EOR", 'Unsafe mode should not enforce character validity tests');
+<x><![CDATA[\x00]]></x>
+EOR
+
+	initEnv(UNSAFE => 1);
+	$w->emptyTag('x', 'a' => "\x00");
+	$w->end();
+	checkResult(<<"EOR", 'Unsafe mode should not enforce character validity tests');
+<x a="\x00" />
+EOR
+}
+
+# Cover XML declaration encoding cases
+TEST: {
+	# No declaration unless specified
+	initEnv();
+	$w->xmlDecl();
+	$w->emptyTag('x');
+	$w->end();
+
+	checkResult(<<"EOR", 'When no encoding is specified, the declaration should not include one');
+<?xml version="1.0"?>
+<x />
+EOR
+
+	# An encoding specified in the constructor carries across to the declaration
+	initEnv(ENCODING => 'us-ascii');
+	$w->xmlDecl();
+	$w->emptyTag('x');
+	$w->end();
+
+	checkResult(<<"EOR", 'If an encoding is specified for the document, it should appear in the declaration');
+<?xml version="1.0" encoding="us-ascii"?>
+<x />
+EOR
+
+	# Anything passed in the xmlDecl call should override
+	initEnv(ENCODING => 'us-ascii');
+	$w->xmlDecl('utf-8');
+	$w->emptyTag('x');
+	$w->end();
+	checkResult(<<"EOR", 'An encoding passed to xmlDecl should override any other encoding');
+<?xml version="1.0" encoding="utf-8"?>
+<x />
+EOR
+
+	# The empty string should force the omission of the decl
+	initEnv(ENCODING => 'us-ascii');
+	$w->xmlDecl('');
+	$w->emptyTag('x');
+	$w->end();
+	checkResult(<<"EOR", 'xmlDecl should treat the empty string as instruction to omit the encoding from the declaration');
+<?xml version="1.0"?>
+<x />
 EOR
 }
 

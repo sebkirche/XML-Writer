@@ -4,7 +4,7 @@
 # Copyright (c) 2004, 2005 by Joseph Walton <joe@kafsemo.org>.
 # No warranty.  Commercial and non-commercial use freely permitted.
 #
-# $Id: Writer.pm,v 1.44 2005/05/16 07:02:36 josephw Exp $
+# $Id: Writer.pm,v 1.48 2005/06/30 22:17:04 josephw Exp $
 ########################################################################
 
 package XML::Writer;
@@ -15,7 +15,7 @@ use strict;
 use vars qw($VERSION);
 use Carp;
 use IO::Handle;
-$VERSION = "0.545";
+$VERSION = "0.600";
 
 
 
@@ -121,10 +121,12 @@ sub new {
       $standalone = 'yes';
     }
 
-    # This line is questionable, but changing current behaviour
-    # may be a bad idea. There seems to be a mismatch with the
-    # documentation, though.
-    $encoding ||= $outputEncoding || "UTF-8";
+    # Only include an encoding if one has been explicitly supplied,
+    #  either here or on construction. Allow the empty string
+    #  to suppress it.
+    if (!defined($encoding)) {
+      $encoding = $outputEncoding;
+    }
     $output->print("<?xml version=\"1.0\"");
     if ($encoding) {
       $output->print(" encoding=\"$encoding\"");
@@ -355,6 +357,7 @@ sub new {
     } elsif ($dataMode && $hasElement) {
       croak("Mixed content not allowed in data mode: characters");
     } else {
+      _croakUnlessDefinedCharacters($_[0]);
       &{$characters};
     }
   };
@@ -383,6 +386,7 @@ sub new {
     } elsif ($dataMode && $hasElement) {
       croak("Mixed content not allowed in data mode: characters");
     } else {
+      _croakUnlessDefinedCharacters($_[0]);
       &{$checkUnencodedRepertoire}($_[0]);
       &{$cdata};
     }
@@ -439,7 +443,11 @@ sub new {
 
   $self->{'ANCESTOR'} = sub {
     my ($n) = (@_);
-    return $elementStack[$#elementStack-$n];
+    if ($n < scalar(@elementStack)) {
+      return $elementStack[$#elementStack-$n];
+    } else {
+      return undef;
+    }
   };
 
                                 # Set and get the output destination.
@@ -710,7 +718,7 @@ sub removePrefix {
 ########################################################################
 
 #
-# Private: check for duplicate attributes.
+# Private: check for duplicate attributes and bad characters.
 # Note - this starts at $_[1], because $_[0] is assumed to be an
 # element name.
 #
@@ -719,12 +727,14 @@ sub _checkAttributes {
   my $i = 1;
   while ($_[0]->[$i]) {
     my $name = $_[0]->[$i];
-    $i += 2;
+    $i += 1;
     if ($anames{$name}) {
       croak("Two attributes named \"$name\"");
     } else {
       $anames{$name} = 1;
     }
+    _croakUnlessDefinedCharacters($_[0]->[$i]);
+    $i += 1;
   }
 }
 
@@ -752,6 +762,13 @@ sub _croakUnlessASCII($) {
   }
 }
 
+# Enforce XML 1.0, section 2.2's definition of "Char" (only reject low ASCII,
+#  so as not to require Unicode support from perl)
+sub _croakUnlessDefinedCharacters($) {
+  if ($_[0] =~ /([\x00-\x08\x0B-\x0C\x0E-\x1F])/) {
+    croak(sprintf('Code point \u%04X is not a valid character in XML', ord($1)));
+  }
+}
 
 
 ########################################################################
@@ -1287,7 +1304,8 @@ Add an XML declaration to the beginning of an XML document.  The
 version will always be "1.0".  If you provide a non-null encoding or
 standalone argument, its value will appear in the declaration (any
 non-null value for standalone except 'no' will automatically be
-converted to 'yes').
+converted to 'yes'). If not given here, the encoding will be taken from the
+ENCODING argument. Pass the empty string to suppress this behaviour.
 
   $writer->xmlDecl("UTF-8");
 
