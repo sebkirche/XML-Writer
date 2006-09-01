@@ -2,10 +2,10 @@
 ########################################################################
 # test.pl - test script for XML::Writer module.
 # Copyright (c) 1999 by Megginson Technologies.
-# Copyright (c) 2004, 2005 by Joseph Walton <joe@kafsemo.org>.
+# Copyright (c) 2004 - 2006 by Joseph Walton <joe@kafsemo.org>.
 # No warranty.  Commercial and non-commercial use freely permitted.
 #
-# $Id: 01_main.t,v 1.22 2005/06/30 21:57:52 josephw Exp $
+# $Id: 01_main.t 164 2006-09-01 14:01:45Z josephw $
 ########################################################################
 
 # Before 'make install' is performed this script should be runnable with
@@ -13,7 +13,7 @@
 
 use strict;
 
-use Test::More(tests => 207);
+use Test::More(tests => 213);
 
 
 # Catch warnings
@@ -1733,6 +1733,39 @@ EOR
 	checkResult(<<"EOR", 'xmlDecl should treat the empty string as instruction to omit the encoding from the declaration');
 <?xml version="1.0"?>
 <x />
+EOR
+}
+
+# Bug report: [cpan #14854] Broken namespace report
+# Passing a list reference as an argument should work more than once
+TEST: {
+	my $t = ['uri:test', 'elem'];
+
+	initEnv(PREFIX_MAP => {'uri:test' => 'prefix'});
+
+	$w->startTag($t);
+	ok(eval {$w->emptyTag($t);}, 'Passing an array twice should not cause failure');
+	$w->endTag($t);
+	$w->end();
+
+	checkResult(<<"EOR", 'An array passed by reference should not be modified');
+<prefix:elem xmlns:prefix="uri:test"><prefix:elem /></prefix:elem>
+EOR
+}
+
+# As per #14854, list references should also work for attribute names
+TEST: {
+	my $t = ['uri:test', 'elem'];
+
+	initEnv(PREFIX_MAP => {'uri:test' => 'prefix'});
+
+	$w->startTag('x', $t => '');
+	ok(eval {$w->emptyTag('y', $t => '');}, 'Passing an array twice should not cause failure');
+	$w->endTag('x');
+	$w->end();
+
+	checkResult(<<"EOR", 'An array passed by reference should not be modified');
+<x prefix:elem="" xmlns:prefix="uri:test"><y prefix:elem="" /></x>
 EOR
 }
 

@@ -4,7 +4,7 @@
 # Copyright (c) 2004, 2005 by Joseph Walton <joe@kafsemo.org>.
 # No warranty.  Commercial and non-commercial use freely permitted.
 #
-# $Id: Writer.pm,v 1.48 2005/06/30 22:17:04 josephw Exp $
+# $Id: Writer.pm 166 2006-09-01 14:17:24Z josephw $
 ########################################################################
 
 package XML::Writer;
@@ -15,7 +15,7 @@ use strict;
 use vars qw($VERSION);
 use Carp;
 use IO::Handle;
-$VERSION = "0.600";
+$VERSION = "0.601";
 
 
 
@@ -921,12 +921,16 @@ sub new {
   #
   my $nsProcess = sub {
     if (ref($_[0]->[0]) eq 'ARRAY') {
-      &{$processName}(\$_[0]->[0], $_[0], 0);
+      my $x = \@{$_[0]->[0]};
+      &{$processName}(\$x, $_[0], 0);
+      splice(@{$_[0]}, 0, 1, $x);
     }
     my $i = 1;
     while ($_[0]->[$i]) {
       if (ref($_[0]->[$i]) eq 'ARRAY') {
-        &{$processName}(\$_[0]->[$i], $_[0], 1);
+        my $x = \@{$_[0]->[$i]};
+        &{$processName}(\$x, $_[0], 1);
+        splice(@{$_[0]}, $i, 1, $x);
       }
       $i += 2;
     }
@@ -1257,7 +1261,7 @@ ancestor from the same namespace.
 A true or false value; if this parameter is present and its value is
 true, then the module will insert an extra newline before the closing
 delimiter of start, end, and empty tags to guarantee that the document
-does not end up as a single, long line.  If the paramter is not
+does not end up as a single, long line.  If the parameter is not
 present, the module will not insert the newlines.
 
 =item UNSAFE
