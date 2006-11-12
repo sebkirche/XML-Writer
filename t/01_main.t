@@ -5,7 +5,7 @@
 # Copyright (c) 2004 - 2006 by Joseph Walton <joe@kafsemo.org>.
 # No warranty.  Commercial and non-commercial use freely permitted.
 #
-# $Id: 01_main.t 164 2006-09-01 14:01:45Z josephw $
+# $Id: 01_main.t 175 2006-11-11 16:54:22Z josephw $
 ########################################################################
 
 # Before 'make install' is performed this script should be runnable with
@@ -42,7 +42,12 @@ sub isUnicodeSupported()
 
 require XML::Writer;
 
-wasNoWarning('Loading XML::Writer should not result in warnings');
+SKIP: {
+	skip "Perls before 5.6 always warn when loading XML::Writer", 1 if $] <= 
+	5.006;
+
+	wasNoWarning('Loading XML::Writer should not result in warnings');
+}
 
 use IO::File;
 
@@ -68,7 +73,7 @@ sub initEnv(@)
 	# Reset the scratch file
 	$outputFile->seek(0, 0);
 	$outputFile->truncate(0);
-	binmode($outputFile, ':raw');
+	binmode($outputFile, ':raw') if $] >= 5.006;
 
 	# Overwrite OUTPUT so it goes to the scratch file
 	$args{'OUTPUT'} = $outputFile;
@@ -721,7 +726,7 @@ TEST: {
 	$w->emptyTag('elem', ['http://www.w3.org/XML/1998/namespace', 'space'] => 'preserve');
 	$w->end();
 
-	if (!unlike(getBufStr(), qr/1998/, "No declaration should be generated for the 'xml:' prefix"))
+	if (!unlike(getBufStr(), '/1998/', "No declaration should be generated for the 'xml:' prefix"))
 	{
 		diag(getBufStr());
 	}
@@ -742,7 +747,7 @@ TEST: {
 	$w->endTag('doc');
 	$w->end();
 
-	if (!unlike(getBufStr(), qr/uri:test.*uri:test/, 'An API should allow forced namespace declarations'))
+	if (!unlike(getBufStr(), '/uri:test.*uri:test/', 'An API should allow forced namespace declarations'))
 	{
 		diag(getBufStr());
 	}
@@ -1360,7 +1365,13 @@ SKIP: {
 	$w->comment("\$ \x{A3} \x{20AC}");
 	$w->startTag('a');
 	$w->dataElement('b', '$');
-	$w->dataElement('b', "\x{A3}");
+
+	# I need U+00A3 as an is_utf8 string; I want to keep the source ASCII.
+	# There must be a better way to do this.
+	require Encode;
+	my $text = Encode::decode('iso-8859-1', "\x{A3}");
+	$w->dataElement('b', $text);
+
 	$w->dataElement('b', "\x{20AC}");
 	$w->startTag('c');
 	$w->cdata(" \$ \x{A3} \x{20AC} ");
@@ -1383,6 +1394,7 @@ EOR
 
 # Capture generated XML in a scalar
 TEST: {
+	initEnv();
 	my $s;
 
 	$w = new XML::Writer(OUTPUT => \$s);
@@ -1395,6 +1407,7 @@ TEST: {
 
 # Modify the scalar during capture
 TEST: {
+	initEnv();
 	my $s;
 
 	$w = new XML::Writer(OUTPUT => \$s);
@@ -1411,6 +1424,7 @@ TEST: {
 
 # Ensure that ENCODING and SCALAR don't cause failure when used together
 TEST: {
+	initEnv();
 	my $s;
 
 	ok(eval {$w = new XML::Writer(OUTPUT => \$s,
@@ -1429,6 +1443,7 @@ TEST: {
 SKIP: {
 	skip $unicodeSkipMessage, 2 unless isUnicodeSupported();
 
+	initEnv();
 	my $s;
 
 	$w = new XML::Writer(OUTPUT => \$s);
@@ -1482,8 +1497,11 @@ EOR
 
 	# Make sure non-ASCII characters that can't be represented
 	#  as references cause failure
-	my $text = "\x{A3}";
-#	utf8::upgrade($text);
+
+	# I need U+00A3 as an is_utf8 string; I want to keep the source ASCII.
+	# There must be a better way to do this.
+	require Encode;
+	my $text = Encode::decode('iso-8859-1', "\x{A3}");
 
 	initEnv(ENCODING => 'us-ascii', DATA_MODE => 1);
 	$w->startTag('a');
@@ -1692,7 +1710,9 @@ EOR
 }
 
 # Cover XML declaration encoding cases
-TEST: {
+SKIP: {
+	skip $unicodeSkipMessage, 8 unless isUnicodeSupported();
+
 	# No declaration unless specified
 	initEnv();
 	$w->xmlDecl();
