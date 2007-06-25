@@ -5,7 +5,7 @@
 # Copyright (c) 2004 - 2006 by Joseph Walton <joe@kafsemo.org>.
 # No warranty.  Commercial and non-commercial use freely permitted.
 #
-# $Id: 01_main.t 175 2006-11-11 16:54:22Z josephw $
+# $Id: 01_main.t 177 2007-06-24 22:03:53Z josephw $
 ########################################################################
 
 # Before 'make install' is performed this script should be runnable with
@@ -13,7 +13,7 @@
 
 use strict;
 
-use Test::More(tests => 213);
+use Test::More(tests => 217);
 
 
 # Catch warnings
@@ -1675,10 +1675,10 @@ EOR
 	$w->emptyTag('x', 'a' => "\x09\x0A\x0D ");
 	$w->end();
 
-	# Currently, \u000A is escaped. This test is for lack of errors,
+	# \u0009, \u000A and \u000D are escaped. This test is for lack of errors,
 	#  not exact serialisation, so change it if necessary.
 	checkResult(<<"EOR", 'Whitespace below \u0020 is valid.');
-<x a="\x09&#10;\x0D " />
+<x a="&#9;&#10;&#13; " />
 EOR
 }
 
@@ -1788,6 +1788,26 @@ TEST: {
 <x prefix:elem="" xmlns:prefix="uri:test"><y prefix:elem="" /></x>
 EOR
 }
+
+# #25499 - all three whitespace characters should be escaped in attributes
+TEST: {
+	initEnv();
+
+	$w->emptyTag('x', 'a' => "A\nB\rC\tD\t\r\n");
+	$w->end();
+
+	checkResult("<x a=\"A&#10;B&#13;C&#9;D&#9;&#13;&#10;\" />\n", 'Newlines in attribute values should be escaped');
+};
+
+# #25499 - ]]> must be represented as ]]&lt; in attributes
+TEST: {
+	initEnv();
+
+	$w->emptyTag('x', 'a' => ']]>');
+	$w->end();
+
+	checkResult("<x a=\"]]&gt;\" />\n", "]]> must be escaped in attributes");
+};
 
 
 # Free test resources

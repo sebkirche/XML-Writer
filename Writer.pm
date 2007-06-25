@@ -4,7 +4,7 @@
 # Copyright (c) 2004, 2005 by Joseph Walton <joe@kafsemo.org>.
 # No warranty.  Commercial and non-commercial use freely permitted.
 #
-# $Id: Writer.pm 176 2006-11-12 20:22:35Z josephw $
+# $Id: Writer.pm 178 2007-06-25 21:35:24Z josephw $
 ########################################################################
 
 package XML::Writer;
@@ -15,7 +15,7 @@ use strict;
 use vars qw($VERSION);
 use Carp;
 use IO::Handle;
-$VERSION = "0.602";
+$VERSION = "0.603";
 
 
 
@@ -90,6 +90,8 @@ sub new {
       my $aname = $atts->[$i++];
       my $value = _escapeLiteral($atts->[$i++]);
       $value =~ s/\x0a/\&#10\;/g;
+      $value =~ s/\x0d/\&#13\;/g;
+      $value =~ s/\x09/\&#9\;/g;
       &{$escapeEncoding}($value);
       $output->print(" $aname=\"$value\"");
     }
