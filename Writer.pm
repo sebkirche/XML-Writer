@@ -4,7 +4,7 @@
 # Copyright (c) 2004, 2005 by Joseph Walton <joe@kafsemo.org>.
 # No warranty.  Commercial and non-commercial use freely permitted.
 #
-# $Id: Writer.pm 178 2007-06-25 21:35:24Z josephw $
+# $Id: Writer.pm 185 2008-02-21 00:51:34Z josephw $
 ########################################################################
 
 package XML::Writer;
@@ -15,7 +15,7 @@ use strict;
 use vars qw($VERSION);
 use Carp;
 use IO::Handle;
-$VERSION = "0.603";
+$VERSION = "0.604";
 
 
 
@@ -58,7 +58,7 @@ sub new {
     $nl = "\n";
   }
 
-  my $outputEncoding = $params{ENCODING};
+  my $outputEncoding = $params{ENCODING} || "";
   my ($checkUnencodedRepertoire, $escapeEncoding);
   if (lc($outputEncoding) eq 'us-ascii') {
     $checkUnencodedRepertoire = \&_croakUnlessASCII;
