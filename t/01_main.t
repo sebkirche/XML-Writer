@@ -5,7 +5,7 @@
 # Copyright (c) 2004 - 2006 by Joseph Walton <joe@kafsemo.org>.
 # No warranty.  Commercial and non-commercial use freely permitted.
 #
-# $Id: 01_main.t 177 2007-06-24 22:03:53Z josephw $
+# $Id: 01_main.t 191 2008-12-01 22:30:22Z josephw $
 ########################################################################
 
 # Before 'make install' is performed this script should be runnable with
@@ -13,7 +13,7 @@
 
 use strict;
 
-use Test::More(tests => 217);
+use Test::More(tests => 220);
 
 
 # Catch warnings
@@ -447,6 +447,14 @@ TEST: {
 	$w->startTag('bar');
 	ok($w->within_element('foo') && $w->within_element('bar'),
 		'within_element should know about all elements above us');
+};
+
+# within_element returning false
+TEST: {
+	initEnv();
+	$w->startTag('foo');
+	ok(!$w->within_element('bar'),
+		'within_element should return false for non-parent elements');
 };
 
 # current_element query
@@ -1809,6 +1817,20 @@ TEST: {
 	checkResult("<x a=\"]]&gt;\" />\n", "]]> must be escaped in attributes");
 };
 
+# #41359 - ensure dataElement expands namespace attributes
+TEST: {
+	initEnv();
+
+	my $ns = 'http://foo';
+	$w->addPrefix($ns => 'foo');
+
+	$w->startTag('doc');
+	$w->dataElement( [$ns, 'bar'], 'yadah', [$ns, 'baz'] => 'x' );
+	$w->endTag('doc');
+
+	checkResult('<doc><foo:bar foo:baz="x" xmlns:foo="http://foo">yadah</foo:bar></doc>',
+		"A dataElement call must expand namespace attributes");
+};
 
 # Free test resources
 $outputFile->close() or die "Unable to close temporary file: $!";

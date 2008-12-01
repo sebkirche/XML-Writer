@@ -4,7 +4,7 @@
 # Copyright (c) 2004, 2005 by Joseph Walton <joe@kafsemo.org>.
 # No warranty.  Commercial and non-commercial use freely permitted.
 #
-# $Id: Writer.pm 185 2008-02-21 00:51:34Z josephw $
+# $Id: Writer.pm 193 2008-12-01 23:15:17Z josephw $
 ########################################################################
 
 package XML::Writer;
@@ -15,7 +15,7 @@ use strict;
 use vars qw($VERSION);
 use Carp;
 use IO::Handle;
-$VERSION = "0.604";
+$VERSION = "0.605";
 
 
 
@@ -575,8 +575,8 @@ sub endTag {
 # Write a simple data element.
 #
 sub dataElement {
-  my ($self, $name, $data, %atts) = (@_);
-  $self->startTag($name, %atts);
+  my ($self, $name, $data, @atts) = (@_);
+  $self->startTag($name, @atts);
   $self->characters($data);
   $self->endTag($name);
 }
@@ -1614,12 +1614,15 @@ providing an UNSAFE parameter:
 David Megginson E<lt>david@megginson.comE<gt>
 
 
-=head1 COPYRIGHT
+=head1 COPYRIGHT AND LICENSE
 
 Copyright 1999, 2000 David Megginson E<lt>david@megginson.comE<gt>
 
 Copyright 2004, 2005 Joseph Walton E<lt>joe@kafsemo.orgE<gt>
 
+This module is free software; you can redistribute it and/or
+modify it under the terms of the MIT License. See the F<LICENSE> file
+included with this distribution.
 
 =head1 SEE ALSO
 
