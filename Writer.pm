@@ -4,7 +4,7 @@
 # Copyright (c) 2004, 2005 by Joseph Walton <joe@kafsemo.org>.
 # No warranty.  Commercial and non-commercial use freely permitted.
 #
-# $Id: Writer.pm 193 2008-12-01 23:15:17Z josephw $
+# $Id: Writer.pm 197 2008-12-03 00:15:55Z josephw $
 ########################################################################
 
 package XML::Writer;
@@ -15,7 +15,7 @@ use strict;
 use vars qw($VERSION);
 use Carp;
 use IO::Handle;
-$VERSION = "0.605";
+$VERSION = "0.606";
 
 
 
