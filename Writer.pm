@@ -1,10 +1,9 @@
 ########################################################################
 # Writer.pm - write an XML document.
 # Copyright (c) 1999 by Megginson Technologies.
-# Copyright (c) 2004, 2005 by Joseph Walton <joe@kafsemo.org>.
+# Copyright (c) 2003 Ed Avis <ed@membled.com>
+# Copyright (c) 2004-2010 Joseph Walton <joe@kafsemo.org>
 # No warranty.  Commercial and non-commercial use freely permitted.
-#
-# $Id$
 ########################################################################
 
 package XML::Writer;
@@ -15,7 +14,7 @@ use strict;
 use vars qw($VERSION);
 use Carp;
 use IO::Handle;
-$VERSION = "0.607";
+$VERSION = "0.610";
 
 
 
@@ -454,7 +453,11 @@ sub new {
 
                                 # Set and get the output destination.
   $self->{'GETOUTPUT'} = sub {
-    return $output;
+    if (ref($output) ne 'XML::Writer::_PrintChecker') {
+      return $output;
+    } else {
+      return $output->{HANDLE};
+    }
   };
 
   $self->{'SETOUTPUT'} = sub {
@@ -475,6 +478,10 @@ sub new {
           die 'The only supported encodings are utf-8 and us-ascii';
         }
       }
+    }
+
+    if ($params{CHECK_PRINT}) {
+      $output = XML::Writer::_PrintChecker->new($output);
     }
   };
 
@@ -1142,6 +1149,27 @@ sub print
   return 1;
 }
 
+
+package XML::Writer::_PrintChecker;
+
+use Carp;
+
+sub new
+{
+  my $class = shift;
+  return bless({HANDLE => shift}, $class);
+}
+
+sub print
+{
+  my $self = shift;
+  if ($self->{HANDLE}->print(shift)) {
+    return 1;
+  } else {
+    croak "Failed to write output: $!";
+  }
+}
+
 1;
 __END__
 
@@ -1293,6 +1321,12 @@ data mode).
 A character encoding; currently this must be one of 'utf-8' or 'us-ascii'.
 If present, it will be used for the underlying character encoding and as the
 default in the XML declaration.
+
+=item CHECK_PRINT
+
+A true or false value; if this parameter is present and its value is
+true, all prints to the underlying output will be checked for success. Failures
+will cause a croak rather than being ignored.
 
 =back
 
@@ -1620,9 +1654,7 @@ Copyright 1999, 2000 David Megginson E<lt>david@megginson.comE<gt>
 
 Copyright 2004, 2005 Joseph Walton E<lt>joe@kafsemo.orgE<gt>
 
-This module is free software; you can redistribute it and/or
-modify it under the terms of the MIT License. See the F<LICENSE> file
-included with this distribution.
+No warranty.  Commercial and non-commercial use freely permitted.
 
 =head1 SEE ALSO
 
