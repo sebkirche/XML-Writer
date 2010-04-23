@@ -4,7 +4,8 @@
 # Copyright (c) 1999 by Megginson Technologies.
 # Copyright (c) 2003 Ed Avis <ed@membled.com>
 # Copyright (c) 2004-2010 Joseph Walton <joe@kafsemo.org>
-# No warranty.  Commercial and non-commercial use freely permitted.
+# Redistribution and use in source and compiled forms, with or without
+# modification, are permitted under any circumstances.  No warranty.
 ########################################################################
 
 # Before 'make install' is performed this script should be runnable with
@@ -14,7 +15,7 @@ use strict;
 
 use Errno;
 
-use Test::More(tests => 223);
+use Test::More(tests => 225);
 
 
 # Catch warnings
@@ -1875,6 +1876,19 @@ TEST: {
 
 	initEnv(OUTPUT => $failingWriter);
 	$w->xmlDecl();
+};
+
+# getOutput() with CHECK_PRINT should get the underlying stream, not the wrapper
+TEST: {
+	initEnv(CHECK_PRINT => 1);
+
+	my $out = $w->getOutput();
+
+	$w->setOutput(\*STDERR);
+	is($w->getOutput(), \*STDERR, 'Changing output should be reflected in a subsequent get');
+
+	$w->setOutput($out);
+	is ($w->getOutput(), $out, 'Changing output back should succeed');
 };
 
 # Free test resources
