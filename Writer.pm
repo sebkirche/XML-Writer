@@ -15,7 +15,7 @@ use strict;
 use vars qw($VERSION);
 use Carp;
 use IO::Handle;
-$VERSION = "0.611";
+$VERSION = "0.612";
 
 
 
@@ -49,7 +49,7 @@ sub new {
   my $unsafe = $params{UNSAFE};
   my $newlines = $params{NEWLINES};
   my $dataMode = $params{DATA_MODE};
-  my $dataIndent = $params{DATA_INDENT} || 0;
+  my $dataIndent;
 
                                 # If the NEWLINES parameter is specified,
                                 # set the $nl variable appropriately
@@ -183,7 +183,7 @@ sub new {
     my $data = $_[0];
     if ($dataMode && $elementLevel) {
       $output->print("\n");
-      $output->print(" " x ($elementLevel * $dataIndent));
+      $output->print($dataIndent x $elementLevel);
     }
     $output->print("<!-- $data -->");
     if ($dataMode && $elementLevel) {
@@ -241,7 +241,7 @@ sub new {
     my $name = $_[0];
     if ($dataMode && ($hasHeading || $elementLevel)) {
       $output->print("\n");
-      $output->print(" " x ($elementLevel * $dataIndent));
+      $output->print($dataIndent x $elementLevel);
     }
     $elementLevel++;
     push @elementStack, $name;
@@ -282,7 +282,7 @@ sub new {
     my $name = $_[0];
     if ($dataMode && ($hasHeading || $elementLevel)) {
       $output->print("\n");
-      $output->print(" " x ($elementLevel * $dataIndent));
+      $output->print($dataIndent x $elementLevel);
     }
     $output->print("<$name");
     &{$showAttributes}(\@_);
@@ -320,7 +320,7 @@ sub new {
     $elementLevel--;
     if ($dataMode && $hasElement) {
       $output->print("\n");
-      $output->print(" " x ($elementLevel * $dataIndent));
+      $output->print($dataIndent x $elementLevel);
     }
     $output->print("</$name$nl>");
     if ($dataMode) {
@@ -495,12 +495,23 @@ sub new {
   };
 
   $self->{'SETDATAINDENT'} = sub {
-    $dataIndent = $_[0];
+    if ($_[0] =~ /^\s*$/) {
+      $dataIndent = $_[0];
+    } else {
+      $dataIndent = ' ' x $_[0];
+    }
   };
 
   $self->{'GETDATAINDENT'} = sub {
-    return $dataIndent;
+    if ($dataIndent =~ /^ *$/) {
+      return length($dataIndent);
+    } else {
+      return $dataIndent;
+    }
   };
+
+                                # Set the indent.
+  &{$self->{'SETDATAINDENT'}}($params{'DATA_INDENT'} || '');
 
                                 # Set the output.
   &{$self->{'SETOUTPUT'}}($params{'OUTPUT'});
@@ -1313,9 +1324,10 @@ elements as content.
 
 =item DATA_INDENT
 
-A numeric value; if this parameter is present, it represents the
+A numeric value or white space; if this parameter is present, it represents the
 indent step for elements in data mode (it will be ignored when not in
-data mode).
+data mode). If it is white space it will be repeated for each level of
+indentation.
 
 =item ENCODING
 
@@ -1651,11 +1663,14 @@ David Megginson E<lt>david@megginson.comE<gt>
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright 1999, 2000 David Megginson E<lt>david@megginson.comE<gt>
+Copyright (c) 1999 by Megginson Technologies.
 
-Copyright 2004, 2005 Joseph Walton E<lt>joe@kafsemo.orgE<gt>
+Copyright (c) 2003 Ed Avis E<lt>ed@membled.comE<gt>
 
-No warranty.  Commercial and non-commercial use freely permitted.
+Copyright (c) 2004-2010 Joseph Walton E<lt>joe@kafsemo.orgE<gt>
+
+Redistribution and use in source and compiled forms, with or without
+modification, are permitted under any circumstances.  No warranty.
 
 =head1 SEE ALSO
 
