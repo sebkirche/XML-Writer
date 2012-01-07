@@ -15,7 +15,7 @@ use strict;
 use vars qw($VERSION);
 use Carp;
 use IO::Handle;
-$VERSION = "0.612";
+$VERSION = "0.613";
 
 
 
@@ -40,7 +40,7 @@ sub new {
                                 # from within XML::Writer::Namespaces::new()
   if ($params{NAMESPACES}) {
     delete $params{NAMESPACES};
-    return new XML::Writer::Namespaces(%params);
+    return XML::Writer::Namespaces->new(%params);
   }
 
                                 # Set up $self and basic parameters
@@ -168,7 +168,7 @@ sub new {
     $seen{ANYTHING} = 1;
     if (($name =~ /^xml/i) && ($name !~ /^xml-stylesheet$/i)) {
       carp("Processing instruction target begins with 'xml'");
-    } 
+    }
 
     if ($name =~ /\?\>/ || (defined($data) && $data =~ /\?\>/)) {
       croak("Processing instruction may not contain '?>'");
@@ -465,12 +465,12 @@ sub new {
     my $newOutput = $_[0];
 
     if (ref($newOutput) eq 'SCALAR') {
-      $output = new XML::Writer::_String($newOutput);
+      $output = XML::Writer::_String->new($newOutput);
     } else {
                                 # If there is no OUTPUT parameter,
                                 # use standard output
       $output = $newOutput || \*STDOUT;
-      if ($outputEncoding) {
+      if ($outputEncoding && $output->isa('IO::Handle')) {
         if (lc($outputEncoding) eq 'utf-8') {
           binmode($output, ':encoding(utf-8)');
         } elsif (lc($outputEncoding) eq 'us-ascii') {
@@ -831,7 +831,7 @@ sub new {
   delete $prefixMap{$defaultPrefix} if ($defaultPrefix);
 
                                 # Create an instance of the parent.
-  my $self = new XML::Writer(%params);
+  my $self = XML::Writer->new(%params);
 
                                 # Snarf the parent's methods that we're
                                 # going to override.
@@ -917,7 +917,7 @@ sub new {
         $nsCopyFlag = 1;
       }
       $uriMap->{''} = $uri;
-      
+
                                 # Is there a straight-forward prefix?
     } elsif ($prefix) {
       $$nameref = "$prefix:$local";
@@ -1198,10 +1198,10 @@ XML::Writer - Perl extension for writing XML documents.
   use XML::Writer;
   use IO::File;
 
-  my $output = new IO::File(">output.xml");
+  my $output = IO::File->new(">output.xml");
 
-  my $writer = new XML::Writer(OUTPUT => $output);
-  $writer->startTag("greeting", 
+  my $writer = XML::Writer->new(OUTPUT => $output);
+  $writer->startTag("greeting",
                     "class" => "simple");
   $writer->characters("Hello, world!");
   $writer->endTag("greeting");
@@ -1241,7 +1241,7 @@ elements can optionally be indented based as their nesting level.
 
 Create a new XML::Writer object:
 
-  my $writer = new XML::Writer(OUTPUT => $output, NEWLINES => 1);
+  my $writer = XML::Writer->new(OUTPUT => $output, NEWLINES => 1);
 
 Arguments are an anonymous hash array of parameters:
 
@@ -1249,11 +1249,11 @@ Arguments are an anonymous hash array of parameters:
 
 =item OUTPUT
 
-An object blessed into IO::Handle or one of its subclasses (such as
-IO::File), or a reference to a string; if this parameter is not present,
-the module will write to standard output. If a string reference is passed,
-it will capture the generated XML (as a string; to get bytes use the
-C<Encode> module).
+An object blessed into IO::Handle or one of its subclasses (such as IO::File),
+or a reference to a string, or any blessed object that has a print() method;
+if this parameter is not present, the module will write to standard output. If
+a string reference is passed, it will capture the generated XML (as a string;
+to get bytes use the C<Encode> module).
 
 =item NAMESPACES
 
@@ -1263,7 +1263,7 @@ reference in the place of element and attribute names, as in the
 following example:
 
   my $rdfns = "http://www.w3.org/1999/02/22-rdf-syntax-ns#";
-  my $writer = new XML::Writer(NAMESPACES => 1);
+  my $writer = XML::Writer->new(NAMESPACES => 1);
   $writer->startTag([$rdfns, "Description"]);
 
 The first member of the array is a namespace URI, and the second part
@@ -1280,7 +1280,7 @@ namespace URIs:
 
 
   my $rdfns = "http://www.w3.org/1999/02/22-rdf-syntax-ns#";
-  my $writer = new XML::Writer(NAMESPACES => 1,
+  my $writer = XML::Writer->new(NAMESPACES => 1,
                                PREFIX_MAP => {$rdfns => 'rdf'});
 
 The keys in the hash table are namespace URIs, and the values are the
@@ -1653,7 +1653,7 @@ This error reporting can catch many hidden bugs in Perl programs that
 create XML documents; however, if necessary, it can be turned off by
 providing an UNSAFE parameter:
 
-  my $writer = new XML::Writer(OUTPUT => $output, UNSAFE => 1);
+  my $writer = XML::Writer->new(OUTPUT => $output, UNSAFE => 1);
 
 
 =head1 AUTHOR

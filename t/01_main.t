@@ -15,7 +15,7 @@ use strict;
 
 use Errno;
 
-use Test::More(tests => 236);
+use Test::More(tests => 238);
 
 
 # Catch warnings
@@ -45,7 +45,7 @@ sub isUnicodeSupported()
 require XML::Writer;
 
 SKIP: {
-	skip "Perls before 5.6 always warn when loading XML::Writer", 1 if $] <= 
+	skip "Perls before 5.6 always warn when loading XML::Writer", 1 if $] <=
 	5.006;
 
 	wasNoWarning('Loading XML::Writer should not result in warnings');
@@ -84,7 +84,7 @@ sub initEnv(@)
 	$args{'NAMESPACES'} = 1 unless(defined($args{'NAMESPACES'}));
 
 	undef($warning);
-	$w = new XML::Writer(%args) || die "Cannot create XML writer";
+	$w = XML::Writer->new(%args) || die "Cannot create XML writer";
 }
 
 #
@@ -779,7 +779,7 @@ TEST: {
 	wasNoWarning('The test processing instructions should not cause warnings');
 };
 
-# Verify that a still-reserved processing instruction generates 
+# Verify that a still-reserved processing instruction generates
 # a warning.
 TEST: {
 	initEnv();
@@ -1407,7 +1407,7 @@ TEST: {
 	initEnv();
 	my $s;
 
-	$w = new XML::Writer(OUTPUT => \$s);
+	$w = XML::Writer->new(OUTPUT => \$s);
 	$w->emptyTag('x');
 	$w->end();
 
@@ -1420,7 +1420,7 @@ TEST: {
 	initEnv();
 	my $s;
 
-	$w = new XML::Writer(OUTPUT => \$s);
+	$w = XML::Writer->new(OUTPUT => \$s);
 	$w->startTag('foo', bar => 'baz');
 	is($s, "<foo bar=\"baz\">", 'Scalars should be up-to-date during writing');
 
@@ -1437,7 +1437,7 @@ TEST: {
 	initEnv();
 	my $s;
 
-	ok(eval {$w = new XML::Writer(OUTPUT => \$s,
+	ok(eval {$w = XML::Writer->new(OUTPUT => \$s,
 		ENCODING => 'utf-8'
 	);}, 'OUTPUT and ENCODING should not cause failure');
 }
@@ -1456,7 +1456,7 @@ SKIP: {
 	initEnv();
 	my $s;
 
-	$w = new XML::Writer(OUTPUT => \$s);
+	$w = XML::Writer->new(OUTPUT => \$s);
 
 	my $x = 'x';
 	utf8::upgrade($x);
@@ -1468,7 +1468,7 @@ SKIP: {
 
 
 	undef($s);
-	$w = new XML::Writer(OUTPUT => \$s);
+	$w = XML::Writer->new(OUTPUT => \$s);
 	$w->startTag('a');
 	$w->dataElement('x', "\$");
 	$w->dataElement('x', "\x{A3}");
@@ -1943,7 +1943,7 @@ TEST: {
 TEST: {
 	initEnv(
 		DATA_MODE => 1,
-		DATA_INDENT => '' 
+		DATA_INDENT => ''
 	);
 
 	$w->xmlDecl();
@@ -1974,10 +1974,30 @@ TEST: {
 	is($w->getDataIndent(), 0, 'Non-numeric indent should fall back to zero');
 };
 
+
+TEST: {
+	my $output;
+	bless \$output, 'DuckOutput';
+	ok(eval {
+	initEnv(
+		OUTPUT=>\$output,
+		ENCODING=>'UTF-8'
+	);
+	}, "An encoding for a blessed ref shouldn't cause errors.");
+
+	$w->xmlDecl();
+	is($output, qq{<?xml version="1.0" encoding="UTF-8"?>\n}, "Basic Duck Typing output");
+};
+
 # Free test resources
 $outputFile->close() or die "Unable to close temporary file: $!";
 
 1;
+
+
+package DuckOutput;
+
+sub print { ${(shift)} .= join('', @_); }
 
 
 package XML::Writer::Test::FailingWriter;
