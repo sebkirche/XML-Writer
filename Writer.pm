@@ -15,7 +15,7 @@ use strict;
 use vars qw($VERSION);
 use Carp;
 use IO::Handle;
-$VERSION = "0.613";
+$VERSION = "0.614";
 
 
 
@@ -470,7 +470,7 @@ sub new {
                                 # If there is no OUTPUT parameter,
                                 # use standard output
       $output = $newOutput || \*STDOUT;
-      if ($outputEncoding && $output->isa('IO::Handle')) {
+      if ($outputEncoding && (ref($output) eq 'GLOB' || $output->isa('IO::Handle'))) {
         if (lc($outputEncoding) eq 'utf-8') {
           binmode($output, ':encoding(utf-8)');
         } elsif (lc($outputEncoding) eq 'us-ascii') {
