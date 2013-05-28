@@ -15,7 +15,7 @@ use strict;
 use vars qw($VERSION);
 use Carp;
 use IO::Handle;
-$VERSION = "0.621";
+$VERSION = "0.622";
 
 use overload '""' => \&_overload_string;
 
@@ -470,7 +470,7 @@ sub new {
   $self->{'SETOUTPUT'} = sub {
     my $newOutput = $_[0];
 
-     if ( $newOutput eq 'self' ) {
+     if ( !ref($newOutput) && 'self' eq $newOutput ) {
         $newOutput = \$selfcontained_output;
         $use_selfcontained_output = 1;
      }
