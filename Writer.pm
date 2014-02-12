@@ -15,7 +15,7 @@ use strict;
 use vars qw($VERSION);
 use Carp;
 use IO::Handle;
-$VERSION = "0.623";
+$VERSION = "0.624";
 
 use overload '""' => \&_overload_string;
 
@@ -219,11 +219,11 @@ sub new {
     my ($name, $publicId, $systemId) = (@_);
     $output->print("<!DOCTYPE $name");
     if ($publicId) {
-      unless ($systemId) {
+      unless ( defined $systemId) {
         croak("A DOCTYPE declaration with a public ID must also have a system ID");
       }
       $output->print(" PUBLIC \"$publicId\" \"$systemId\"");
-    } elsif ($systemId) {
+    } elsif ( defined $systemId ) {
       $output->print(" SYSTEM \"$systemId\"");
     }
     $output->print(">\n");
