@@ -15,7 +15,7 @@ use strict;
 use vars qw($VERSION);
 use Carp;
 use IO::Handle;
-$VERSION = "0.624";
+$VERSION = "0.625";
 
 use overload '""' => \&_overload_string;
 
@@ -172,7 +172,7 @@ sub new {
   my $SAFE_pi = sub {
     my ($name, $data) = (@_);
     $seen{ANYTHING} = 1;
-    if (($name =~ /^xml/i) && ($name !~ /^xml-stylesheet$/i)) {
+    if (($name =~ /^xml/i) && ($name !~ /^xml-(stylesheet|model)$/i)) {
       carp("Processing instruction target begins with 'xml'");
     }
 
@@ -470,10 +470,10 @@ sub new {
   $self->{'SETOUTPUT'} = sub {
     my $newOutput = $_[0];
 
-     if ( !ref($newOutput) && 'self' eq $newOutput ) {
-        $newOutput = \$selfcontained_output;
-        $use_selfcontained_output = 1;
-     }
+    if (defined($newOutput) && !ref($newOutput) && 'self' eq $newOutput ) {
+      $newOutput = \$selfcontained_output;
+      $use_selfcontained_output = 1;
+    }
 
     if (ref($newOutput) eq 'SCALAR') {
       $output = XML::Writer::_String->new($newOutput);
