@@ -3,6 +3,7 @@
 # Copyright (c) 1999 by Megginson Technologies.
 # Copyright (c) 2003 Ed Avis <ed@membled.com>
 # Copyright (c) 2004-2010 Joseph Walton <joe@kafsemo.org>
+# Copyright (c) 2015 Sebastien Kirche <sebastien.kirche@free.fr>
 # Redistribution and use in source and compiled forms, with or without
 # modification, are permitted under any circumstances.  No warranty.
 ########################################################################
@@ -15,7 +16,7 @@ use strict;
 use vars qw($VERSION);
 use Carp;
 use IO::Handle;
-$VERSION = "0.625";
+$VERSION = "0.625.1";
 
 use overload '""' => \&_overload_string;
 
@@ -347,13 +348,18 @@ sub new {
     }
   };
 
+  my $characters_filter = $params{CHARACTERS_FILTER}
+    || sub {
+    if ($_[0] =~ /[\&\<\>]/) {
+      $_[0] =~ s/\&/\&amp\;/g;
+      $_[0] =~ s/\</\&lt\;/g;
+      $_[0] =~ s/\>/\&gt\;/g;
+    }
+  };
+  
   my $characters = sub {
     my $data = $_[0];
-    if ($data =~ /[\&\<\>]/) {
-      $data =~ s/\&/\&amp\;/g;
-      $data =~ s/\</\&lt\;/g;
-      $data =~ s/\>/\&gt\;/g;
-    }
+    &{$characters_filter}($data);
     &{$escapeEncoding}($data);
     $output->print($data);
     $hasData = 1;
@@ -1388,6 +1394,11 @@ set.
 A true or false value; if this parameter is present and its value is
 true, all prints to the underlying output will be checked for success. Failures
 will cause a croak rather than being ignored.
+
+=item CHARACTERS_FILTER
+
+A sub reference to perform character escaping in elements data. If this parameter
+is absent, a default filter will escape &, <, >.
 
 =back
 

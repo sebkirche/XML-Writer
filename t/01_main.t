@@ -15,7 +15,7 @@ use strict;
 
 use Errno;
 
-use Test::More(tests => 246);
+use Test::More(tests => 248);
 
 
 # Catch warnings
@@ -295,6 +295,26 @@ TEST: {
 	$w->endTag("foo");
 	$w->end();
 	checkResult("<foo>&lt;tag&gt;&amp;amp;&lt;/tag&gt;</foo>\n", 'Escaped character data');
+};
+
+# Character data with custom filter
+TEST: {
+	my $filter = sub {
+		if ($_[0] =~ /[\&\<\>"']/) {
+			$_[0] =~ s/\&/\&amp\;/g;
+			$_[0] =~ s/"/\&quot\;/g;
+			$_[0] =~ s/'/\&apos\;/g;
+			$_[0] =~ s/\</\&lt\;/g;
+			$_[0] =~ s/\>/\&gt\;/g;
+		}
+	};
+	
+	initEnv(CHARACTERS_FILTER => $filter);
+	$w->startTag("foo");
+	$w->characters("<tag>\"&amp;''</tag>");
+	$w->endTag("foo");
+	$w->end();
+	checkResult("<foo>&lt;tag&gt;&quot;&amp;amp;&apos;&apos;&lt;/tag&gt;</foo>\n", 'Escaped character data with custom filter');
 };
 
 # Comment outside document element
